@@ -1,12 +1,12 @@
 const express = require("express");
-const app = express();
-// const cloudinary = require("cloudinary").v2;
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-const port = process.env.PORT || 5000;
-// const fileUpload = require("express-fileupload");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
+const app = express();
+// const cloudinary = require("cloudinary").v2;
+const port = process.env.PORT || 5000;
+// const fileUpload = require("express-fileupload");
 app.use(cors());
 app.use(express.json());
 
@@ -22,11 +22,6 @@ const client = new MongoClient(uri, {
   useUnifiedTopology: true,
   serverApi: ServerApiVersion.v1,
 });
-
-const uuid = function () {
-  return Date.now() + "_" + Math.random().toString(36).substr(2, 9);
-};
-
 
 function verifyJWT(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -45,16 +40,24 @@ function verifyJWT(req, res, next) {
   });
 }
 
-// cloudinary.config({
-//   cloud_name: process.env.CLOUDINARY_NAME,
-//   api_key: process.env.CLOUDINARY_API_KEY,
-//   api_secret: process.env.CLOUDINARY_API_SECRET,
-//   secure: true,
-// });
 
 async function run() {
   try {
     const userCollection = client.db("Morgen").collection("users");
+
+
+    // verify admin
+    const verifyAdmin = async (req, res, next) => {
+      const decodedEmail = req.decoded.email;
+      const query = { email: decodedEmail };
+      const user = await userCollection.findOne(query);
+
+      if (user?.role !== "admin") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
+
 
     //user input
     app.put("/user/:email", async (req, res) => {
@@ -73,60 +76,21 @@ async function run() {
       res.send({ result, token });
     });
 
-    // //image upload
-    // app.post("/uploadImage", async (req, res) => {
-    //   try {
-    //     const { file } = req?.files;
+    //get user role
+    app.get("/user/:email", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+      const decodedEmail = req.decoded.email;
 
-    //     console.log(file, "get the fiel", uuid());
-    //     if (file) {
-    //       await cloudinary.uploader.upload(
-    //         file.tempFilePath,
-    //         {
-    //           resource_type: "image",
-    //           public_id:
-    //             "Mahbub_Turza/Images/" + file?.name.split(".")[0] + uuid(),
-    //           overwrite: true,
-    //         },
-    //         function (error, result) {
-    //           if (result) {
-    //             res.json({ url: result.url });
-    //           }
-    //           if (error) {
-    //             res.status(400).json({ error });
-    //           }
-    //           console.log({ result, error });
-    //         }
-    //       );
-    //     }
-    //   } catch (e) {
-    //     console.log(e);
-    //     res.status(400).json({ error: "could not upload image" });
-    //   }
-    // });
+      // console.log(email);
+      
+      if (email !== decodedEmail) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      res.send(user);
+    });
 
-    // app.post("/video", async (req, res) => {
-    //   console.log("the file", req.files.video);
-    //   const file = req.files?.video;
-    //   let url;
-    //   if (file) {
-    //     await cloudinary.uploader.upload(
-    //       file.tempFilePath,
-    //       {
-    //         resource_type: "video",
-    //         public_id: "Mahbub_Turza/Videos/" + file.name.split(".")[0],
-    //         overwrite: true,
-    //       },
-    //       function (error, result) {
-    //         if (result) {
-    //           url = result.url;
-    //         }
-    //         console.log(result, error);
-    //       }
-    //     );
-    //   }
-    //   res.json({ url });
-    // });
 
   } finally {
   }
