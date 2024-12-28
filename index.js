@@ -109,79 +109,76 @@ async function run() {
 
     //all product & filtering products
     app.get("/products", async (req, res) => {
-      const {
-        productName,
-        brandName,
-        minPrice,
-        maxPrice,
-        minHeight,
-        maxHeight,
-        minWidth,
-        maxWidth,
-        minDepth,
-        maxDepth,
-        category,
-        subCategory,
-        color,
-      } = req.query;
-
-      const filter = {};
-
-      if (productName) {
-        filter.productName = { $regex: productName, $options: "i" };
-      }
-      if (brandName) {
-        filter.brandName = { $regex: brandName, $options: "i" };
-      }
-      if (minPrice || maxPrice) {
-        filter.askingPrice = {};
-        if (minPrice) filter.askingPrice.$gte = parseFloat(minPrice);
-        if (maxPrice) filter.askingPrice.$lte = parseFloat(maxPrice);
-      }
-      if (minHeight || maxHeight) {
-        filter.height = {};
-        if (minHeight) filter.height.$gte = parseFloat(minHeight);
-        if (maxHeight) filter.height.$lte = parseFloat(maxHeight);
-      }
-      if (minWidth || maxWidth) {
-        filter.width = {};
-        if (minWidth) filter.width.$gte = parseFloat(minWidth);
-        if (maxWidth) filter.width.$lte = parseFloat(maxWidth);
-      }
-      if (minDepth || maxDepth) {
-        filter.depth = {};
-        if (minDepth) filter.depth.$gte = parseFloat(minDepth);
-        if (maxDepth) filter.depth.$lte = parseFloat(maxDepth);
-      }
-      if (category) {
-        filter.category = { $regex: category, $options: "i" };
-      }
-      if (subCategory) {
-        filter.subCategory = { $regex: subCategory, $options: "i" };
-      }
-
-      if (color) {
-        filter.utilities = {
-          $elemMatch: { color: { $regex: color, $options: "i" } },
-        };
-      }
-
       try {
-        const products = await productCollection.find(filter).toArray();
+        const { availability, color, price, size, typeOfProducts } = req.query;
 
-        const updatedProducts = products.map((product) => {
-          const discountAmount = product.askingPrice * (product.discount / 100);
-          const discountedPrice = product.askingPrice - discountAmount;
-          return {
-            ...product,
-            discountedPrice: discountedPrice.toFixed(2),
+        const query = {};
+
+        if (availability?.length) {
+          query.availability = {
+            $in: availability
+              .split(",")
+              .map((item) => new RegExp(`^${item}$`, "i")),
           };
-        });
+        }
 
-        res.send(updatedProducts);
-      } catch (err) {
-        console.error("Error fetching products:", err);
-        res.status(500).send({ error: "Failed to fetch products" });
+        if (price) {
+          const [min, max] = price.split("-").map(Number);
+          query.askingPrice = { $gte: min, $lte: max };
+        }
+
+        if (size?.length) {
+          query.size = {
+            $in: size.split(",").map((item) => new RegExp(`^${item}$`, "i")),
+          };
+        }
+
+        if (typeOfProducts) {
+          const parsedTypeOfProducts = JSON.parse(typeOfProducts);
+          const typeFilters = [];
+          for (const gender in parsedTypeOfProducts) {
+            for (const category in parsedTypeOfProducts[gender]) {
+              for (const subCategory in parsedTypeOfProducts[gender][
+                category
+              ]) {
+                if (parsedTypeOfProducts[gender][category][subCategory]) {
+                  typeFilters.push({
+                    person: new RegExp(`^${gender}$`, "i"),
+                    category: new RegExp(`^${category}$`, "i"),
+                    subCategory: new RegExp(`^${subCategory}$`, "i"),
+                  });
+                }
+              }
+            }
+          }
+          if (typeFilters.length) {
+            query.$or = typeFilters;
+          }
+        }
+        const products = await productCollection.find(query).toArray();
+
+        const filteredProducts = [];
+        if (color?.length) {
+          const colors = color.split(",").map((item) => item.toLowerCase());
+          products.forEach((product) => {
+            const matchedUtilities = product.utilities.filter((util) =>
+              colors.includes(util.color.toLowerCase())
+            );
+
+            matchedUtilities.forEach((utility) => {
+              const productCopy = { ...product };
+              productCopy.utilities = [utility];
+              filteredProducts.push(productCopy);
+            });
+          });
+        } else {
+          filteredProducts.push(...products);
+        }
+
+        res.send(filteredProducts);
+      } catch (error) {
+        console.error("Error fetching products:", error);
+        res.status(500).send({ message: "Error fetching products" });
       }
     });
 
@@ -195,15 +192,21 @@ async function run() {
 
     //get related products
     app.get("/related-products", async (req, res) => {
-      const { productName, category, subCategory, person, limit = 5 } = req.query;
-    
+      const {
+        productName,
+        category,
+        subCategory,
+        person,
+        limit = 5,
+      } = req.query;
+
       if (!productName && !category && !subCategory && !person) {
         return res.status(400).send({
           error:
             "At least one of productName, category, subCategory, or person must be provided to fetch related products.",
         });
       }
-    
+
       try {
         const filter = [];
         if (category) {
@@ -218,16 +221,16 @@ async function run() {
         if (person) {
           filter.push({ person: { $regex: person, $options: "i" } });
         }
-    
+
         const query = filter.length > 1 ? { $and: filter } : filter[0] || {};
-        const parseLimit = Math.max(1, parseInt(limit)); 
-    
+        const parseLimit = Math.max(1, parseInt(limit));
+
         const relatedProducts = await productCollection
           .find(query)
-          .sort({ category: 1, subCategory: 1 }) 
-          .limit(parseLimit) 
+          .sort({ category: 1, subCategory: 1 })
+          .limit(parseLimit)
           .toArray();
-          
+
         const updatedProducts = relatedProducts.map((product) => {
           const discountAmount = product.askingPrice * (product.discount / 100);
           const discountedPrice = product.askingPrice - discountAmount;
@@ -236,17 +239,13 @@ async function run() {
             discountedPrice: discountedPrice.toFixed(2),
           };
         });
-    
+
         res.send(updatedProducts);
       } catch (err) {
         console.error("Error fetching related products:", err);
         res.status(500).send({ error: "Failed to fetch related products" });
       }
     });
-    
-
-
-
   } finally {
   }
 }
