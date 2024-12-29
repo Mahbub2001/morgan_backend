@@ -110,7 +110,10 @@ async function run() {
     //all product & filtering products
     app.get("/products", async (req, res) => {
       try {
-        const { availability, color, price, size, typeOfProducts } = req.query;
+        const { availability, color, price, size, typeOfProducts, sortPar } =
+          req.query;
+
+        console.log(sortPar);
 
         const query = {};
 
@@ -155,7 +158,43 @@ async function run() {
             query.$or = typeFilters;
           }
         }
-        const products = await productCollection.find(query).toArray();
+
+        const sortCriteria = {};
+        if (sortPar) {
+          switch (sortPar) {
+            case "featured":
+              sortCriteria.featured = -1; //  "featured" is a ranking field
+              break;
+            case "bestSelling":
+              sortCriteria.sales = -1; //  "sales" represents best-selling rank
+              break;
+            case "alphabeticallyAZ":
+              sortCriteria.productName = 1; // Sort by name (A-Z)
+              break;
+            case "alphabeticallyZA":
+              sortCriteria.productName = -1; // Sort by name (Z-A)
+              break;
+            case "priceLowToHigh":
+              sortCriteria.askingPrice = 1; // Sort by price (low to high) //future work discount
+              break;
+            case "priceHighToLow":
+              sortCriteria.askingPrice = -1; // Sort by price (high to low)
+              break;
+            case "dateOldToNew":
+              sortCriteria.date = 1; // Sort by date (old to new)
+              break;
+            case "dateNewToOld":
+              sortCriteria.date = -1; // Sort by date (new to old)
+              break;
+            default:
+              break;
+          }
+        }
+
+        const products = await productCollection
+          .find(query)
+          .sort(sortCriteria)
+          .toArray();
 
         const filteredProducts = [];
         if (color?.length) {
