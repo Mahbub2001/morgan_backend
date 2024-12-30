@@ -334,41 +334,67 @@ async function run() {
     });
 
     // admin product delete,update checkbox,update product
-    app.put("/admin/update-products", async (req, res) => {
-      try {
-        const { products } = req.body;
+    app.put(
+      "/admin/update-products",
+      verifyJWT,
+      verifyAdmin,
+      async (req, res) => {
+        try {
+          const { products } = req.body;
 
-        if (!products || !Array.isArray(products)) {
-          return res
-            .status(400)
-            .json({ success: false, message: "Invalid data format." });
-        }
-        const bulkOps = products.map((product) => ({
-          updateOne: {
-            filter: { _id: new ObjectId(product._id) },
-            update: {
-              $set: {
-                show: product.show,
-                featured: product.featured,
-                discount: product.discount,
-                promote: product.promote,
+          if (!products || !Array.isArray(products)) {
+            return res
+              .status(400)
+              .json({ success: false, message: "Invalid data format." });
+          }
+          const bulkOps = products.map((product) => ({
+            updateOne: {
+              filter: { _id: new ObjectId(product._id) },
+              update: {
+                $set: {
+                  show: product.show,
+                  featured: product.featured,
+                  discount: product.discount,
+                  promote: product.promote,
+                },
               },
             },
-          },
-        }));
+          }));
 
-        const result = await productCollection.bulkWrite(bulkOps);
+          const result = await productCollection.bulkWrite(bulkOps);
 
-        res.json({
-          success: true,
-          message: "Products updated successfully.",
-          modifiedCount: result.modifiedCount,
-        });
+          res.json({
+            success: true,
+            message: "Products updated successfully.",
+            modifiedCount: result.modifiedCount,
+          });
+        } catch (error) {
+          console.error("Error updating products:", error);
+          res
+            .status(500)
+            .json({ success: false, message: "Failed to update products." });
+        }
+      }
+    );
+
+    // admin delete product
+    app.delete("/admin/delete-product",verifyJWT,verifyAdmin, async (req, res) => {
+      try {
+        const { productId } = req.body;
+        const objectId = new ObjectId(productId);
+        const result = await productCollection.deleteOne({ _id: objectId });
+        if (result.deletedCount > 0) {
+          res.json({ success: true, message: "Product deleted successfully." });
+        } else {
+          res
+            .status(404)
+            .json({ success: false, message: "Product not found." });
+        }
       } catch (error) {
-        console.error("Error updating products:", error);
+        console.error("Error deleting product:", error);
         res
           .status(500)
-          .json({ success: false, message: "Failed to update products." });
+          .json({ success: false, message: "Failed to delete product." });
       }
     });
   } finally {
