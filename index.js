@@ -101,12 +101,6 @@ async function run() {
       }
     });
 
-    //get all product
-    // app.get("/products", async (req, res) => {
-    //   const products = await productCollection.find({}).toArray();
-    //   res.send(products);
-    // });
-
     //all product & filtering products
     app.get("/products", async (req, res) => {
       try {
@@ -283,6 +277,98 @@ async function run() {
       } catch (err) {
         console.error("Error fetching related products:", err);
         res.status(500).send({ error: "Failed to fetch related products" });
+      }
+    });
+
+    // get all products  admin with pagination, search, and filtering
+    app.get("/admin/products", async (req, res) => {
+      try {
+        const {
+          page = 1,
+          limit = 10,
+          search = "",
+          person,
+          category,
+          subcategory,
+        } = req.query;
+
+        const pageNumber = parseInt(page);
+        const pageSize = parseInt(limit);
+
+        const query = {};
+        if (search) {
+          query.$or = [
+            { productName: { $regex: search, $options: "i" } },
+            { description: { $regex: search, $options: "i" } },
+          ];
+        }
+        if (category) query.category = category;
+        if (subcategory) query.subcategory = subcategory;
+        if (person) query.person = person;
+
+        const products = await productCollection
+          .find(query)
+          .skip((pageNumber - 1) * pageSize)
+          .limit(pageSize)
+          .toArray();
+
+        const totalCount = await productCollection.countDocuments(query);
+
+        res.send({
+          success: true,
+          products,
+          pagination: {
+            totalItems: totalCount,
+            totalPages: Math.ceil(totalCount / pageSize),
+            currentPage: pageNumber,
+            pageSize,
+          },
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: "An error occurred while fetching products.",
+          error: error.message,
+        });
+      }
+    });
+
+    // admin product delete,update checkbox,update product
+    app.put("/admin/update-products", async (req, res) => {
+      try {
+        const { products } = req.body;
+
+        if (!products || !Array.isArray(products)) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Invalid data format." });
+        }
+        const bulkOps = products.map((product) => ({
+          updateOne: {
+            filter: { _id: new ObjectId(product._id) },
+            update: {
+              $set: {
+                show: product.show,
+                featured: product.featured,
+                discount: product.discount,
+                promote: product.promote,
+              },
+            },
+          },
+        }));
+
+        const result = await productCollection.bulkWrite(bulkOps);
+
+        res.json({
+          success: true,
+          message: "Products updated successfully.",
+          modifiedCount: result.modifiedCount,
+        });
+      } catch (error) {
+        console.error("Error updating products:", error);
+        res
+          .status(500)
+          .json({ success: false, message: "Failed to update products." });
       }
     });
   } finally {
