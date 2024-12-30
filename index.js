@@ -378,23 +378,83 @@ async function run() {
     );
 
     // admin delete product
-    app.delete("/admin/delete-product",verifyJWT,verifyAdmin, async (req, res) => {
-      try {
-        const { productId } = req.body;
-        const objectId = new ObjectId(productId);
-        const result = await productCollection.deleteOne({ _id: objectId });
-        if (result.deletedCount > 0) {
-          res.json({ success: true, message: "Product deleted successfully." });
-        } else {
+    app.delete(
+      "/admin/delete-product",
+      verifyJWT,
+      verifyAdmin,
+      async (req, res) => {
+        try {
+          const { productId } = req.body;
+          const objectId = new ObjectId(productId);
+          const result = await productCollection.deleteOne({ _id: objectId });
+          if (result.deletedCount > 0) {
+            res.json({
+              success: true,
+              message: "Product deleted successfully.",
+            });
+          } else {
+            res
+              .status(404)
+              .json({ success: false, message: "Product not found." });
+          }
+        } catch (error) {
+          console.error("Error deleting product:", error);
           res
-            .status(404)
-            .json({ success: false, message: "Product not found." });
+            .status(500)
+            .json({ success: false, message: "Failed to delete product." });
         }
+      }
+    );
+
+    // admin edit product details
+    app.put("/admin/product-details/:id", async (req, res) => {
+      const productId = req.params.id;
+      const {
+        person,
+        category,
+        subCategory,
+        productName,
+        productDescription,
+        askingPrice,
+        height,
+        width,
+        depth,
+        features,
+        utilities,
+      } = req.body;
+
+      if (!ObjectId.isValid(productId)) {
+        return res.status(400).json({ error: "Invalid product ID" });
+      }
+
+      try {
+        const updatedProduct = {
+          person,
+          category,
+          subCategory,
+          productName,
+          productDescription,
+          askingPrice,
+          height,
+          width,
+          depth,
+          features,
+          utilities,
+        };
+
+        const result = await productCollection.updateOne(
+          { _id: new ObjectId(productId) },
+          { $set: updatedProduct }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ error: "Product not found" });
+        }
+
+        res.status(200).json({ message: "Product updated successfully" });
       } catch (error) {
-        console.error("Error deleting product:", error);
-        res
-          .status(500)
-          .json({ success: false, message: "Failed to delete product." });
+        console.error("Error updating product:", error);
+        res.status(500).json({ error: "Internal server error" });
       }
     });
   } finally {
