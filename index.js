@@ -7,12 +7,7 @@ const app = express();
 // const cloudinary = require("cloudinary").v2;
 const port = process.env.PORT || 5000;
 // const fileUpload = require("express-fileupload");
-app.use(cors({
-  origin: ["http://localhost:3000"],
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true, // Allows cookies and authorization headers
-}));
-// app.use(cors());
+app.use(cors());
 app.use(express.json());
 
 // app.use(
