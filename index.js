@@ -10,7 +10,7 @@ const port = process.env.PORT || 5000;
 // const fileUpload = require("express-fileupload");
 app.use(
   cors({
-    origin: 'http://localhost:3000', // Allow requests from your frontend
+    origin: '*', // Allow requests from your frontend
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'], // Allow these headers
     credentials: true, // Allow cookies and credentials
