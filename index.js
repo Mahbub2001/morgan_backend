@@ -7,16 +7,8 @@ const app = express();
 // const cloudinary = require("cloudinary").v2;
 const port = process.env.PORT || 5000;
 // const fileUpload = require("express-fileupload");
-const corsOptions = {
-  origin: 'http://localhost:3000', // Allow your frontend domain
-  methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allowed HTTP methods
-  allowedHeaders: ['Content-Type', 'Authorization'], // Allow 'Authorization' header for JWT
-  credentials: true, // Allow sending cookies or Authorization header
-};
 
-app.use(cors(corsOptions));
-
-// app.use(cors());
+app.use(cors());
 app.use(express.json());
 
 // app.use(
