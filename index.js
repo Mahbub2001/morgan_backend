@@ -7,10 +7,8 @@ const app = express();
 // const cloudinary = require("cloudinary").v2;
 const port = process.env.PORT || 5000;
 // const fileUpload = require("express-fileupload");
-const corsOptions = {
-  origin: "http://localhost:3000", 
-  methods: ["GET", "POST", "PUT", "DELETE","PATCH"], 
-  allowedHeaders: ["Content-Type", "Authorization"], 
+let corsOptions = {
+  origin: ["http://localhost:3000"],
 };
 app.use(cors(corsOptions));
 
