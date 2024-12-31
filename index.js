@@ -7,21 +7,23 @@ const app = express();
 // const cloudinary = require("cloudinary").v2;
 const port = process.env.PORT || 5000;
 // const fileUpload = require("express-fileupload");
-
-const allowedOrigins = ['http://localhost:3000'];
-
-app.use(cors({
-    origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
-    allowedHeaders: ['Content-Type', 'Authorization'],
+app.use(
+  cors({
+    origin: 'http://localhost:3000', // Allow requests from your frontend
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    credentials: true
-}));
+    allowedHeaders: ['Content-Type', 'Authorization'], // Allow these headers
+    credentials: true, // Allow cookies and credentials
+  })
+);
+
+app.options('*', (req, res) => {
+  res.set('Access-Control-Allow-Origin', 'http://localhost:3000'); // Update this in production
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  res.set('Access-Control-Allow-Credentials', 'true');
+  res.sendStatus(200);
+});
+
 // app.use(cors());
 app.use(express.json());
 
