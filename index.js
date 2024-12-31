@@ -1,7 +1,6 @@
 const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
-const bodyParser = require('body-parser');
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 const app = express();
@@ -16,16 +15,6 @@ app.use(
     credentials: true, // Allow cookies and credentials
   })
 );
-
-app.use(bodyParser.json());
-
-app.options('*', (req, res) => {
-  res.set('Access-Control-Allow-Origin', 'http://localhost:3000'); // Update this in production
-  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-  res.set('Access-Control-Allow-Credentials', 'true');
-  res.sendStatus(200);
-});
 
 // app.use(cors());
 app.use(express.json());
