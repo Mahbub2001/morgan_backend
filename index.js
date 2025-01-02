@@ -45,6 +45,7 @@ async function run() {
   try {
     const userCollection = client.db("Morgen").collection("users");
     const productCollection = client.db("Morgen").collection("products");
+    const couponCollection = client.db("Morgen").collection("coupons");
 
     // verify admin
     const verifyAdmin = async (req, res, next) => {
@@ -456,6 +457,58 @@ async function run() {
       } catch (error) {
         console.error("Error updating product:", error);
         res.status(500).json({ error: "Internal server error" });
+      }
+    });
+
+    //------------------------------------ coupon section--------------------------------
+    app.get("/coupons", async (req, res) => {
+      try {
+        const coupons = await couponCollection.find().toArray();
+        res.json(coupons);
+      } catch (error) {
+        console.error("Error fetching coupons:", error);
+        res.status(500).send("Error fetching coupons");
+      }
+    });
+
+    app.post("/coupons", async (req, res) => {
+      const { code, percentageDiscount, amountDiscount } = req.body;
+
+      if (!code) return res.status(400).send("Coupon code is required");
+      if (!percentageDiscount && !amountDiscount)
+        return res.status(400).send("Provide a discount value");
+      if (percentageDiscount && amountDiscount)
+        return res.status(400).send("Provide only one type of discount");
+
+      try {
+        const existingCoupon = await couponCollection.findOne({ code });
+        if (existingCoupon)
+          return res.status(400).send("Coupon already exists");
+
+        await couponCollection.insertOne({
+          code,
+          percentageDiscount: percentageDiscount || 0,
+          amountDiscount: amountDiscount || 0,
+        });
+        res.status(201).send("Coupon added");
+      } catch (error) {
+        console.error("Error adding coupon:", error);
+        res.status(500).send("Error adding coupon");
+      }
+    });
+
+    app.delete("/coupons/:code", async (req, res) => {
+      const { code } = req.params;
+
+      try {
+        const result = await couponCollection.deleteOne({ code });
+        if (result.deletedCount === 0) {
+          return res.status(404).send("Coupon not found");
+        }
+        res.send("Coupon removed");
+      } catch (error) {
+        console.error("Error removing coupon:", error);
+        res.status(500).send("Error removing coupon");
       }
     });
   } finally {
