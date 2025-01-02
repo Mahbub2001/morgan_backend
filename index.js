@@ -511,6 +511,113 @@ async function run() {
         res.status(500).send("Error removing coupon");
       }
     });
+
+    // -----------------------------------customers manage------------------------------
+    app.get("/customers", async (req, res) => {
+      try {
+        const customers = await userCollection.find().toArray();
+        customers.forEach((customer) => {
+          if (customer.role != "user") {
+            customers.splice(customers.indexOf(customer), 1);
+          }
+        });
+        res.json(customers);
+      } catch (error) {
+        console.error("Error fetching customers:", error);
+        res.status(500).send("Error fetching customers");
+      }
+    });
+
+    // -----------------------------------user profile manage------------------------------
+    // update user profile
+    app.put("/profile/:id", verifyJWT, async (req, res) => {
+      const { id } = req.params;
+      const user = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const options = { upsert: true };
+      const updateDoc = {
+        $set: user,
+      };
+      const result = await userCollection.updateOne(filter, updateDoc, options);
+      res.send(result);
+    });
+
+    // Add a new address
+    app.put("/profile/:id/address", verifyJWT, async (req, res) => {
+      const { id } = req.params;
+      const newAddress = req.body;
+
+      try {
+        if (newAddress.default) {
+          await userCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { "address.$[].default": false } }
+          );
+        }
+
+        const result = await userCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $push: { address: { ...newAddress, _id: new ObjectId() } } }
+        );
+
+        res.send({ message: "Address added successfully.", result });
+      } catch (error) {
+        res.status(500).send({ message: "Failed to add address.", error });
+      }
+    });
+
+    //handle set default
+    app.put("/profile/:id/address/default", verifyJWT, async (req, res) => {
+      const { id } = req.params;
+      const { addressId } = req.body;
+
+      try {
+        await userCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { "address.$[].default": false } }
+        );
+
+        const result = await userCollection.updateOne(
+          { _id: new ObjectId(id), "address._id": new ObjectId(addressId) },
+          { $set: { "address.$.default": true } }
+        );
+
+        res.send({ message: "Default address updated successfully.", result });
+      } catch (error) {
+        res
+          .status(500)
+          .send({ message: "Failed to update default address.", error });
+      }
+    });
+
+    // Delete an address
+    app.delete(
+      "/profile/:id/address/:addressId",
+      verifyJWT,
+      async (req, res) => {
+        const { id, addressId } = req.params;
+
+        try {
+          const result = await userCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $pull: { address: { _id: new ObjectId(addressId) } } }
+          );
+
+          if (result.modifiedCount === 0) {
+            return res
+              .status(404)
+              .send({ message: "Address not found or already deleted." });
+          }
+
+          res.send({ message: "Address deleted successfully.", result });
+        } catch (error) {
+          res.status(500).send({ message: "Failed to delete address.", error });
+        }
+      }
+    );
+
+    
+
   } finally {
   }
 }
