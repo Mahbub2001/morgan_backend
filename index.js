@@ -724,18 +724,36 @@ async function run() {
       res.redirect(`${process.env.CLIENT_URL}/cancel_payment`);
     });
 
-    let orderCounter = 0;
+    async function generateOrderId() {
+      try {
+        const lastOrder = await ordersCollection
+          .find()
+          .sort({ orderId: -1 })
+          .limit(1)
+          .toArray();
 
-    function generateOrderId() {
-      orderCounter++;
-      const prefix = "NYMORGEN";
-      const date = new Date();
+        let orderCounter = 0;
 
-      const dateString = `${date.getFullYear()}${String(
-        date.getMonth() + 1
-      ).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+        if (lastOrder.length > 0) {
+          const lastOrderId = lastOrder[0].orderId;
+          const lastOrderIdParts = lastOrderId.split("-");
+          orderCounter = parseInt(lastOrderIdParts[2], 10);
+        }
+        orderCounter++;
+        const prefix = "NYMORGEN";
+        const date = new Date();
+        const dateString = `${date.getFullYear()}${String(
+          date.getMonth() + 1
+        ).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
 
-      return `${prefix}-${dateString}-${String(orderCounter).padStart(5, "0")}`;
+        return `${prefix}-${dateString}-${String(orderCounter).padStart(
+          5,
+          "0"
+        )}`;
+      } catch (error) {
+        console.error("Error generating Order ID:", error);
+        return null;
+      }
     }
     app.post("/orders", verifyJWT, async (req, res) => {
       try {
@@ -799,12 +817,15 @@ async function run() {
             }
           );
         }
-
+        const ordId = await generateOrderId();
         const order = {
           tran_id: orderResult.insertedId,
           status: "pending",
-          orderId: generateOrderId(),
+          orderId: ordId,
           userId: req.body.userid,
+          customer_email: req.body.email,
+          customer_firstName: req.body.firstName,
+          customer_lastName: req.body.lastName,
           products: req.body.products,
           createdAt: new Date(),
           totalPrice: req.body.totalPrice,
@@ -935,6 +956,114 @@ async function run() {
           .json({ success: false, message: "Failed to cancel order" });
       }
     });
+
+    // get all orders for admin
+    app.get("/admin/orders", verifyJWT, verifyAdmin, async (req, res) => {
+      try {
+        const {
+          page = 1,
+          limit = 10,
+          search = "",
+          sort = "createdAt",
+          order = "desc",
+        } = req.query;
+
+        const pageNumber = parseInt(page, 10);
+        const limitNumber = parseInt(limit, 10);
+
+        const searchQuery = search
+          ? { orderId: { $regex: search, $options: "i" } }
+          : {};
+
+        const sortOption = { [sort]: order === "desc" ? -1 : 1 };
+        const orders = await ordersCollection
+          .find(searchQuery)
+          .sort(sortOption)
+          .skip((pageNumber - 1) * limitNumber)
+          .limit(limitNumber)
+          .toArray();
+
+        const totalOrders = await ordersCollection.countDocuments(searchQuery);
+
+        res.json({
+          orders,
+          totalOrders,
+          totalPages: Math.ceil(totalOrders / limitNumber),
+          currentPage: pageNumber,
+        });
+      } catch (error) {
+        console.error("Error fetching orders:", error);
+        res.status(500).send("Error fetching orders");
+      }
+    });
+
+    app.put(
+      "/admin/orders/bulk-update",
+      verifyJWT,
+      verifyAdmin,
+      async (req, res) => {
+        const { updates } = req.body;
+
+        // console.log("updates", updates);
+        // return;
+
+        if (!updates || !Array.isArray(updates)) {
+          return res.status(400).json({ message: "Invalid updates format." });
+        }
+
+        try {
+          const bulkOrderOperations = [];
+          const bulkTransactionOperations = [];
+          const productUpdates = {};
+
+          for (const update of updates) {
+            const { id, status, products, tran_id } = update;
+
+            bulkOrderOperations.push({
+              updateOne: {
+                filter: { _id: new ObjectId(id) },
+                update: { $set: { status } },
+              },
+            });
+
+            bulkTransactionOperations.push({
+              updateOne: {
+                filter: { _id: new ObjectId(tran_id) },
+                update: { $set: { status } },
+              },
+            });
+
+            if (status === "canceled") {
+              for (const item of products) {
+                const { id, color, quantity } = item;
+
+                await productCollection.updateOne(
+                  {
+                    _id: new ObjectId(id),
+                    "utilities.color": color,
+                  },
+                  {
+                    $inc: { "utilities.$.numberOfProducts": +quantity },
+                  }
+                );
+              }
+            }
+          }
+
+          if (bulkOrderOperations.length > 0) {
+            await ordersCollection.bulkWrite(bulkOrderOperations);
+          }
+          if (bulkTransactionOperations.length > 0) {
+            await transactionCollection.bulkWrite(bulkTransactionOperations);
+          }
+
+          res.json({ message: "Order statuses updated successfully." });
+        } catch (error) {
+          console.error("Error updating order statuses:", error);
+          res.status(500).json({ message: "Error updating order statuses." });
+        }
+      }
+    );
   } finally {
   }
 }
