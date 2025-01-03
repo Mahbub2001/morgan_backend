@@ -10,6 +10,7 @@ const port = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded());
 
 // app.use(
 //   fileUpload({
@@ -46,6 +47,9 @@ async function run() {
     const userCollection = client.db("Morgen").collection("users");
     const productCollection = client.db("Morgen").collection("products");
     const couponCollection = client.db("Morgen").collection("coupons");
+    const transactionCollection = client
+      .db("Morgen")
+      .collection("transactions");
 
     // verify admin
     const verifyAdmin = async (req, res, next) => {
@@ -616,7 +620,109 @@ async function run() {
       }
     );
 
-    
+    // -----------------------------------transactions manage------------------------------
+    app.post("/create-payment", async (req, res) => {
+      const paymentInfo = req.body;
+
+      const trxId = new ObjectId().toString();
+
+      const initiateData = {
+        store_id: process.env.STORE_ID,
+        store_passwd: process.env.STORE_PASSWORD,
+        total_amount: paymentInfo.totalAmount,
+        currency: "BDT",
+        tran_id: trxId,
+        success_url: `${process.env.SERVER_URL}/success-payment`,
+        fail_url: `${process.env.SERVER_URL}/fail-payment`,
+        cancel_url: `${process.env.SERVER_URL}/cancel-payment`,
+        cus_name: "Customer Name",
+        cus_email: "cust@yahoo.com",
+        cus_add1: "Dhaka",
+        cus_add2: "Dhaka",
+        cus_city: "Dhaka",
+        cus_state: "Dhaka",
+        cus_postcode: 1000,
+        cus_country: "Bangladesh",
+        cus_phone: "01711111111",
+        cus_fax: "01711111111",
+        shipping_method: "NO",
+        product_name: "Laptop",
+        product_category: "Laptop",
+        product_profile: "general",
+        // ship_name: "Customer Name",
+        // ship_add1: "Dhaka",
+        // ship_add2: "Dhaka",
+        // ship_city: "Dhaka",
+        // ship_state: "Dhaka",
+        // ship_postcode: 1000,
+        // ship_country: "Bangladesh",
+        multi_card_name: "mastercard,visacard,amexcard",
+        value_a: "ref001_A",
+        value_b: "ref002_B",
+        value_c: "ref003_C",
+        value_d: "ref004_D",
+      };
+
+      const response = await axios({
+        method: "POST",
+        url: "https://sandbox.sslcommerz.com/gwprocess/v4/api.php",
+        data: initiateData,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      });
+
+      const saveData = {
+        cus_name: "dummy",
+        paymentId: trxId,
+        amount: paymentInfo.totalAmount,
+        status: "pending",
+      };
+
+      const save = await transactionCollection.insertOne(saveData);
+
+      if (save) {
+        res.send({
+          paymentUrl: response.data.GatewayPageURL,
+        });
+      }
+    });
+
+    app.post("/success-payment", async (req, res) => {
+      const successData = req.body;
+
+      if (successData.status !== "valid") {
+        throw new Error("Payment failed");
+      }
+
+      // update the database
+
+      const query = {
+        paymentId: successData.tran_id,
+      };
+
+      const update = {
+        $set: {
+          status: "success",
+          // transactionId: successData.bank_tran_id,
+        },
+      };
+
+      const updateData = await transactionCollection.updateOne(query, update);
+
+      console.log("successData", successData);
+      console.log("updateDate", updateData);
+
+      res.redirect(`${process.env.CLIENT_URL}/success_payment`);
+    });
+
+    app.post("/fail-payment", async (req, res) => {
+      res.redirect(`${process.env.CLIENT_URL}/fail_payment`);
+    });
+    app.post("/cancel-payment", async (req, res) => {
+      res.redirect(`${process.env.CLIENT_URL}/cancel_payment`);
+    });
+
 
   } finally {
   }
