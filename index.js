@@ -871,7 +871,70 @@ async function run() {
       }
     });
 
-    
+    // cancel order by order id
+    app.put("/orders/:id", verifyJWT, async (req, res) => {
+      try {
+        const orderId = req.params.id;
+
+        const order = await ordersCollection.findOne({
+          _id: new ObjectId(orderId),
+        });
+        if (!order) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Order not found" });
+        }
+        if (order.status === "cancelled") {
+          return res
+            .status(400)
+            .json({ success: false, message: "Order already cancelled" });
+        }
+        if (order.status === "delivered") {
+          return res
+            .status(400)
+            .json({ success: false, message: "Cannot cancel delivered order" });
+        }
+        const result = await ordersCollection.updateOne(
+          { _id: new ObjectId(orderId) },
+          { $set: { status: "cancelled" } }
+        );
+
+        const transaction = await transactionCollection.findOne({
+          _id: order.tran_id,
+        });
+        if (transaction) {
+          await transactionCollection.updateOne(
+            { _id: order.tran_id },
+            { $set: { status: "cancelled" } }
+          );
+        }
+
+        for (const item of req.body.products) {
+          const { id, color, quantity } = item;
+
+          await productCollection.updateOne(
+            {
+              _id: new ObjectId(id),
+              "utilities.color": color,
+            },
+            {
+              $inc: { "utilities.$.numberOfProducts": +quantity },
+            }
+          );
+        }
+
+        res.json({
+          success: true,
+          message: "Order cancelled successfully",
+          result,
+        });
+      } catch (error) {
+        console.error("Error cancelling order:", error);
+        res
+          .status(500)
+          .json({ success: false, message: "Failed to cancel order" });
+      }
+    });
   } finally {
   }
 }
