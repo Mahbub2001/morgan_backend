@@ -724,7 +724,19 @@ async function run() {
       res.redirect(`${process.env.CLIENT_URL}/cancel_payment`);
     });
 
-    // check out cash on delivery
+    let orderCounter = 0;
+
+    function generateOrderId() {
+      orderCounter++;
+      const prefix = "NYMORGEN";
+      const date = new Date();
+
+      const dateString = `${date.getFullYear()}${String(
+        date.getMonth() + 1
+      ).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+
+      return `${prefix}-${dateString}-${String(orderCounter).padStart(5, "0")}`;
+    }
     app.post("/orders", verifyJWT, async (req, res) => {
       try {
         const transaction = {
@@ -734,6 +746,7 @@ async function run() {
           userid: req.body.userid,
           country: req.body.country,
           phone_number: req.body.phone_number,
+          totalPrice: req.body.totalPrice,
           postcode: req.body.postcode,
           firstName: req.body.firstName,
           lastName: req.body.lastName,
@@ -743,6 +756,34 @@ async function run() {
           status: "pending",
           createdAt: new Date(),
         };
+
+        // Verify product stock
+        for (const item of req.body.products) {
+          const { id, color, quantity } = item;
+
+          const product = await productCollection.findOne({
+            _id: new ObjectId(id),
+            "utilities.color": color,
+          });
+
+          if (!product) {
+            return res.status(400).json({
+              success: false,
+              message: `Product with id ${id} and color ${color} not found`,
+            });
+          }
+
+          const utility = product.utilities.find(
+            (util) => util.color === color
+          );
+
+          if (!utility || utility.numberOfProducts < quantity) {
+            return res.status(400).json({
+              success: false,
+              message: `Insufficient stock for product with id ${id} and color ${color}`,
+            });
+          }
+        }
 
         const orderResult = await transactionCollection.insertOne(transaction);
         for (const item of req.body.products) {
@@ -760,11 +801,13 @@ async function run() {
         }
 
         const order = {
-          orderId: orderResult.insertedId,
+          tran_id: orderResult.insertedId,
           status: "pending",
+          orderId: generateOrderId(),
           userId: req.body.userid,
           products: req.body.products,
           createdAt: new Date(),
+          totalPrice: req.body.totalPrice,
           coupon: req.body.coupon ? req.body.coupon : null,
         };
 
@@ -776,10 +819,59 @@ async function run() {
           orderId: orderResult.insertedId,
         });
       } catch (error) {
-        console.error("Error placing order:", error);
+        // console.error("Error placing order:", error);
         res.status(500).json({ message: "Failed to place order", error });
       }
     });
+
+    // get orders by user id
+    app.get("/orders/:id", verifyJWT, async (req, res) => {
+      try {
+        const userId = req.params.id;
+        if (!userId) {
+          return res
+            .status(400)
+            .json({ success: false, message: "User ID is required." });
+        }
+
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const query = { userId: userId };
+        const totalOrders = await ordersCollection.countDocuments(query);
+        const orders = await ordersCollection
+          .find(query)
+          .skip(skip)
+          .limit(limit)
+          .toArray();
+
+        if (orders.length === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "No orders found for this user.",
+          });
+        }
+
+        res.json({
+          success: true,
+          data: orders,
+          pagination: {
+            totalOrders,
+            currentPage: page,
+            totalPages: Math.ceil(totalOrders / limit),
+            limit,
+          },
+        });
+      } catch (error) {
+        console.error("Error fetching orders:", error);
+        res
+          .status(500)
+          .json({ success: false, message: "Error fetching orders" });
+      }
+    });
+
+    
   } finally {
   }
 }
