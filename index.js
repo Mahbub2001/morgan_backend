@@ -50,6 +50,7 @@ async function run() {
     const transactionCollection = client
       .db("Morgen")
       .collection("transactions");
+    const ordersCollection = client.db("Morgen").collection("orders");
 
     // verify admin
     const verifyAdmin = async (req, res, next) => {
@@ -723,7 +724,62 @@ async function run() {
       res.redirect(`${process.env.CLIENT_URL}/cancel_payment`);
     });
 
+    // check out cash on delivery
+    app.post("/orders", verifyJWT, async (req, res) => {
+      try {
+        const transaction = {
+          email: req.body.email,
+          address: req.body.address,
+          city: req.body.city,
+          userid: req.body.userid,
+          country: req.body.country,
+          phone_number: req.body.phone_number,
+          postcode: req.body.postcode,
+          firstName: req.body.firstName,
+          lastName: req.body.lastName,
+          paymentMethod: req.body.paymentMethod,
+          coupon: req.body.coupon ? req.body.coupon : null,
+          products: req.body.products,
+          status: "pending",
+          createdAt: new Date(),
+        };
 
+        const orderResult = await transactionCollection.insertOne(transaction);
+        for (const item of req.body.products) {
+          const { id, color, quantity } = item;
+
+          await productCollection.updateOne(
+            {
+              _id: new ObjectId(id),
+              "utilities.color": color,
+            },
+            {
+              $inc: { "utilities.$.numberOfProducts": -quantity },
+            }
+          );
+        }
+
+        const order = {
+          orderId: orderResult.insertedId,
+          status: "pending",
+          userId: req.body.userid,
+          products: req.body.products,
+          createdAt: new Date(),
+          coupon: req.body.coupon ? req.body.coupon : null,
+        };
+
+        const ordered = await ordersCollection.insertOne(order);
+
+        res.status(201).json({
+          success: true,
+          message: "Order placed successfully",
+          orderId: orderResult.insertedId,
+        });
+      } catch (error) {
+        console.error("Error placing order:", error);
+        res.status(500).json({ message: "Failed to place order", error });
+      }
+    });
   } finally {
   }
 }
