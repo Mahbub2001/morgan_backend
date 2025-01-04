@@ -52,6 +52,7 @@ async function run() {
       .collection("transactions");
     const ordersCollection = client.db("Morgen").collection("orders");
     const reviewCollection = client.db("Morgen").collection("reviews");
+    const adminSettingsCollection = client.db("Morgen").collection("settings");
 
     // verify admin
     const verifyAdmin = async (req, res, next) => {
@@ -1208,6 +1209,32 @@ async function run() {
         res.status(500).json({ error: "Server error" });
       }
     });
+
+    app.get("/admin/settings",verifyJWT,verifyAdmin, async (req, res) => {
+      try {
+        const settings = await adminSettingsCollection.findOne({});
+        res.json(settings);
+      } catch (error) {
+        res.status(500).json({ error: "Failed to fetch settings" });
+      }
+    });
+
+    app.put("/admin/settings",verifyJWT,verifyAdmin, async (req, res) => {
+      try {
+        const { _id, ...newSettings } = req.body;
+        await adminSettingsCollection.updateOne(
+          {},
+          { $set: newSettings },
+          { upsert: true }
+        );
+        res.status(200).json({ message: "Settings updated successfully" });
+      } catch (error) {
+        console.error("Error updating settings:", error);
+        res.status(500).json({ error: "Failed to update settings" });
+      }
+    });
+
+    
   } finally {
   }
 }
