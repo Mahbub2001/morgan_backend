@@ -1210,7 +1210,7 @@ async function run() {
       }
     });
 
-    app.get("/admin/settings",verifyJWT,verifyAdmin, async (req, res) => {
+    app.get("/admin/settings", verifyJWT, verifyAdmin, async (req, res) => {
       try {
         const settings = await adminSettingsCollection.findOne({});
         res.json(settings);
@@ -1219,7 +1219,7 @@ async function run() {
       }
     });
 
-    app.put("/admin/settings",verifyJWT,verifyAdmin, async (req, res) => {
+    app.put("/admin/settings", verifyJWT, verifyAdmin, async (req, res) => {
       try {
         const { _id, ...newSettings } = req.body;
         await adminSettingsCollection.updateOne(
@@ -1234,7 +1234,43 @@ async function run() {
       }
     });
 
-    
+    // fetch all customers: admin
+    app.get("/admin/customers", verifyJWT, verifyAdmin, async (req, res) => {
+      try {
+        const { page = 1, limit = 10, name = "", id = "" } = req.query;
+
+        const pageNumber = parseInt(page, 10);
+        const limitNumber = parseInt(limit, 10);
+
+        const filter = {};
+        if (name) {
+          filter.name = { $regex: name, $options: "i" };
+        }
+        if (id) {
+          try {
+            filter._id = new ObjectId(id);
+          } catch (error) {
+            return res.status(400).send("Invalid customer ID format");
+          }
+        }
+        const customers = await userCollection
+          .find(filter)
+          .skip((pageNumber - 1) * limitNumber)
+          .limit(limitNumber)
+          .toArray();
+
+        const totalCustomers = await userCollection.countDocuments(filter);
+        res.json({
+          customers,
+          totalCustomers,
+          totalPages: Math.ceil(totalCustomers / limitNumber),
+          currentPage: pageNumber,
+        });
+      } catch (error) {
+        console.error("Error fetching customers:", error);
+        res.status(500).send("Error fetching customers");
+      }
+    });
   } finally {
   }
 }
