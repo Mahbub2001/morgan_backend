@@ -1064,6 +1064,52 @@ async function run() {
         }
       }
     );
+
+    // get user eligibility of a person
+    app.post("/eligible_reviews", async (req, res) => {
+      const { pageData, email } = req.body;
+
+      try {
+        const user = await userCollection.findOne({ email: email });
+        if (!user) {
+          return res.status(200).json({
+            eligible: false,
+            message: "User is not eligible to review this product",
+          });
+        }
+        const userId = user._id. toString();
+        // console.log("User ID:", userId);
+        // console.log("Page Data:", pageData);
+        const orders = await ordersCollection
+          .find({
+            userId: userId,
+            status: "received",
+          })
+          .toArray();  
+        const isEligible = orders.some((order) =>
+          order.products.some(
+            (product) =>
+              product.id === pageData.allData._id &&
+              product.color === pageData.utility.color
+          )
+        );
+
+        if (isEligible) {
+          return res.status(200).json({
+            eligible: true,
+            message: "User is eligible to review this product",
+          });
+        } else {
+          return res.status(200).json({
+            eligible: false,
+            message: "No matching orders found for review eligibility",
+          });
+        }
+      } catch (error) {
+        console.error("Error checking review eligibility:", error);
+        return res.status(500).json({ message: "Internal server error" });
+      }
+    });
   } finally {
   }
 }
