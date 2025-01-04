@@ -1124,6 +1124,65 @@ async function run() {
         res.status(500).send({ error: "Failed to add review" });
       }
     });
+
+    // Get all reviews of a product by product id & color
+    app.get("/reviews/:productId", async (req, res) => {
+      const { productId } = req.params;
+      const { color } = req.query;
+
+      if (!productId || !color) {
+        return res
+          .status(400)
+          .json({ error: "Product ID and color are required" });
+      }
+
+      try {
+        const aggregation = [
+          {
+            $match: {
+              productId: productId,
+              color: color,
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              averageRating: { $avg: "$rating" },
+              totalRatings: { $sum: 1 },
+              oneStar: { $sum: { $cond: [{ $eq: ["$rating", 1] }, 1, 0] } },
+              twoStar: { $sum: { $cond: [{ $eq: ["$rating", 2] }, 1, 0] } },
+              threeStar: { $sum: { $cond: [{ $eq: ["$rating", 3] }, 1, 0] } },
+              fourStar: { $sum: { $cond: [{ $eq: ["$rating", 4] }, 1, 0] } },
+              fiveStar: { $sum: { $cond: [{ $eq: ["$rating", 5] }, 1, 0] } },
+              reviews: { $push: "$$ROOT" },
+            },
+          },
+        ];
+
+        const result = await reviewCollection.aggregate(aggregation).toArray();
+
+        if (result.length === 0) {
+          return res
+            .status(404)
+            .json({ message: "No reviews found for this product and color" });
+        }
+
+        const reviewStats = result[0];
+        res.status(200).json({
+          averageRating: reviewStats.averageRating,
+          totalRatings: reviewStats.totalRatings,
+          oneStar: reviewStats.oneStar,
+          twoStar: reviewStats.twoStar,
+          threeStar: reviewStats.threeStar,
+          fourStar: reviewStats.fourStar,
+          fiveStar: reviewStats.fiveStar,
+          reviews: reviewStats.reviews,
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Server error" });
+      }
+    });
   } finally {
   }
 }
