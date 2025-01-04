@@ -1244,15 +1244,16 @@ async function run() {
 
         const filter = {};
         if (name) {
-          filter.name = { $regex: name, $options: "i" };
+          const regex = { $regex: name, $options: "i" };
+          filter.$or = [{ firstName: regex }, { lastName: regex }];
         }
         if (id) {
-          try {
-            filter._id = new ObjectId(id);
-          } catch (error) {
-            return res.status(400).send("Invalid customer ID format");
-          }
+          const regex = { $regex: id, $options: "i" }; 
+          filter.$expr = {
+            $regexMatch: { input: { $toString: "$_id" }, regex: id, options: "i" },
+          };
         }
+        
         const customers = await userCollection
           .find(filter)
           .skip((pageNumber - 1) * limitNumber)
