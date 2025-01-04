@@ -100,6 +100,7 @@ async function run() {
     //add product
     app.post("/products", verifyJWT, async (req, res) => {
       const product = req.body;
+      product.sales = 0;
       try {
         const result = await productCollection.insertOne(product);
         res.status(201).send(result);
@@ -115,10 +116,7 @@ async function run() {
         const { availability, color, price, size, typeOfProducts, sortPar } =
           req.query;
 
-        console.log(sortPar);
-
         const query = {};
-
         if (availability?.length) {
           query.availability = {
             $in: availability
@@ -147,11 +145,18 @@ async function run() {
                 category
               ]) {
                 if (parsedTypeOfProducts[gender][category][subCategory]) {
-                  typeFilters.push({
-                    person: new RegExp(`^${gender}$`, "i"),
-                    category: new RegExp(`^${category}$`, "i"),
-                    subCategory: new RegExp(`^${subCategory}$`, "i"),
-                  });
+                  if (subCategory.toLowerCase() === "all") {
+                    typeFilters.push({
+                      person: new RegExp(`^${gender}$`, "i"),
+                      category: new RegExp(`^${category}$`, "i"),
+                    });
+                  } else {
+                    typeFilters.push({
+                      person: new RegExp(`^${gender}$`, "i"),
+                      category: new RegExp(`^${category}$`, "i"),
+                      subCategory: new RegExp(`^${subCategory}$`, "i"),
+                    });
+                  }
                 }
               }
             }
@@ -1185,9 +1190,9 @@ async function run() {
           fourStar: 0,
           fiveStar: 0,
         };
-    
+
         const reviews = result[0]?.reviews || [];
-    
+
         res.status(200).json({
           averageRating: metadata.averageRating.toFixed(2),
           totalRatings: metadata.totalRatings,
@@ -1203,8 +1208,6 @@ async function run() {
         res.status(500).json({ error: "Server error" });
       }
     });
-
-    
   } finally {
   }
 }
