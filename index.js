@@ -1129,13 +1129,13 @@ async function run() {
     app.get("/reviews/:productId", async (req, res) => {
       const { productId } = req.params;
       const { color, limit = 5, offset = 0 } = req.query;
-    
+
       if (!productId || !color) {
         return res
           .status(400)
           .json({ error: "Product ID and color are required" });
       }
-    
+
       try {
         const aggregation = [
           { $match: { productId: productId, color: color } },
@@ -1147,35 +1147,46 @@ async function run() {
                     _id: null,
                     averageRating: { $avg: "$rating" },
                     totalRatings: { $sum: 1 },
-                    oneStar: { $sum: { $cond: [{ $eq: ["$rating", 1] }, 1, 0] } },
-                    twoStar: { $sum: { $cond: [{ $eq: ["$rating", 2] }, 1, 0] } },
-                    threeStar: { $sum: { $cond: [{ $eq: ["$rating", 3] }, 1, 0] } },
-                    fourStar: { $sum: { $cond: [{ $eq: ["$rating", 4] }, 1, 0] } },
-                    fiveStar: { $sum: { $cond: [{ $eq: ["$rating", 5] }, 1, 0] } },
+                    oneStar: {
+                      $sum: { $cond: [{ $eq: ["$rating", 1] }, 1, 0] },
+                    },
+                    twoStar: {
+                      $sum: { $cond: [{ $eq: ["$rating", 2] }, 1, 0] },
+                    },
+                    threeStar: {
+                      $sum: { $cond: [{ $eq: ["$rating", 3] }, 1, 0] },
+                    },
+                    fourStar: {
+                      $sum: { $cond: [{ $eq: ["$rating", 4] }, 1, 0] },
+                    },
+                    fiveStar: {
+                      $sum: { $cond: [{ $eq: ["$rating", 5] }, 1, 0] },
+                    },
                   },
                 },
               ],
               reviews: [
+                // { $sort: { createdAt: -1 } },
                 { $skip: parseInt(offset) },
                 { $limit: parseInt(limit) },
               ],
             },
           },
         ];
-    
+
         const result = await reviewCollection.aggregate(aggregation).toArray();
-    
-        if (result.length === 0) {
+
+        if (!result || result.length === 0) {
           return res
             .status(404)
             .json({ message: "No reviews found for this product and color" });
         }
-    
+
         const metadata = result[0].metadata[0] || {};
         const reviews = result[0].reviews || [];
-    
+
         res.status(200).json({
-          averageRating: metadata.averageRating || 0,
+          averageRating: metadata.averageRating.toFixed(2) || 0,
           totalRatings: metadata.totalRatings || 0,
           oneStar: metadata.oneStar || 0,
           twoStar: metadata.twoStar || 0,
@@ -1189,7 +1200,6 @@ async function run() {
         res.status(500).json({ error: "Server error" });
       }
     });
-    
   } finally {
   }
 }
