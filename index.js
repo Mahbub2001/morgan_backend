@@ -51,6 +51,7 @@ async function run() {
       .db("Morgen")
       .collection("transactions");
     const ordersCollection = client.db("Morgen").collection("orders");
+    const reviewCollection = client.db("Morgen").collection("reviews");
 
     // verify admin
     const verifyAdmin = async (req, res, next) => {
@@ -1077,7 +1078,7 @@ async function run() {
             message: "User is not eligible to review this product",
           });
         }
-        const userId = user._id. toString();
+        const userId = user._id.toString();
         // console.log("User ID:", userId);
         // console.log("Page Data:", pageData);
         const orders = await ordersCollection
@@ -1085,7 +1086,7 @@ async function run() {
             userId: userId,
             status: "received",
           })
-          .toArray();  
+          .toArray();
         const isEligible = orders.some((order) =>
           order.products.some(
             (product) =>
@@ -1108,6 +1109,19 @@ async function run() {
       } catch (error) {
         console.error("Error checking review eligibility:", error);
         return res.status(500).json({ message: "Internal server error" });
+      }
+    });
+
+    // Add a review
+    app.post("/add_reviews", verifyJWT, async (req, res) => {
+      const review = req.body;
+      review.createdAt = new Date();
+      try {
+        const result = await reviewCollection.insertOne(review);
+        res.status(201).send(result);
+      } catch (error) {
+        console.error("Error adding review:", error);
+        res.status(500).send({ error: "Failed to add review" });
       }
     });
   } finally {
