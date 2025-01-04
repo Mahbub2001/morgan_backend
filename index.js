@@ -1176,23 +1176,26 @@ async function run() {
 
         const result = await reviewCollection.aggregate(aggregation).toArray();
 
-        if (!result || result.length === 0) {
-          return res
-            .status(404)
-            .json({ message: "No reviews found for this product and color" });
-        }
-
-        const metadata = result[0].metadata[0] || {};
-        const reviews = result[0].reviews || [];
-
+        const metadata = result[0]?.metadata[0] || {
+          averageRating: 0,
+          totalRatings: 0,
+          oneStar: 0,
+          twoStar: 0,
+          threeStar: 0,
+          fourStar: 0,
+          fiveStar: 0,
+        };
+    
+        const reviews = result[0]?.reviews || [];
+    
         res.status(200).json({
-          averageRating: metadata.averageRating.toFixed(2) || 0,
-          totalRatings: metadata.totalRatings || 0,
-          oneStar: metadata.oneStar || 0,
-          twoStar: metadata.twoStar || 0,
-          threeStar: metadata.threeStar || 0,
-          fourStar: metadata.fourStar || 0,
-          fiveStar: metadata.fiveStar || 0,
+          averageRating: metadata.averageRating.toFixed(2),
+          totalRatings: metadata.totalRatings,
+          oneStar: metadata.oneStar,
+          twoStar: metadata.twoStar,
+          threeStar: metadata.threeStar,
+          fourStar: metadata.fourStar,
+          fiveStar: metadata.fiveStar,
           reviews,
         });
       } catch (error) {
@@ -1200,6 +1203,8 @@ async function run() {
         res.status(500).json({ error: "Server error" });
       }
     });
+
+    
   } finally {
   }
 }
