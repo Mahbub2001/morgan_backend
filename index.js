@@ -1426,6 +1426,37 @@ async function run() {
       });
     });
 
+    // pie chart
+    app.get("/pie-chart-data", async (req, res) => {
+      try {
+        await client.connect();
+        const pipeline = [
+          {
+            $facet: {
+              personData: [{ $group: { _id: "$person", count: { $sum: 1 } } }],
+              categoryData: [
+                { $group: { _id: "$category", count: { $sum: 1 } } },
+              ],
+              subCategoryData: [
+                { $group: { _id: "$subCategory", count: { $sum: 1 } } },
+              ],
+            },
+          },
+        ];
+
+        const result = await productCollection.aggregate(pipeline).toArray();
+        const data = result[0];
+
+        res.json({
+          personData: data.personData,
+          categoryData: data.categoryData,
+          subCategoryData: data.subCategoryData,
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    });
+
     
   } finally {
   }
