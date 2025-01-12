@@ -1465,20 +1465,29 @@ async function run() {
         return acc;
       }, {});
     };
-    
-    // API Endpoint
+
+    // pie chart
     app.get("/pie-chart-sales", async (req, res) => {
       try {
-        const orders = await ordersCollection.find({ status: "received" }).toArray();
-        const productIds = orders.flatMap(order => order.products.map(p => new ObjectId(p.id)));
-        const products = await productCollection.find({ _id: { $in: productIds } }).toArray();
-    
+        const orders = await ordersCollection
+          .find({ status: "received" })
+          .toArray();
+        const productIds = orders.flatMap((order) =>
+          order.products.map((p) => new ObjectId(p.id))
+        );
+        const products = await productCollection
+          .find({ _id: { $in: productIds } })
+          .toArray();
+
         const personCount = countOccurrences(products, "person");
         const categoryCount = countOccurrences(products, "category");
         const subCategoryCount = countOccurrences(products, "subCategory");
         const formatData = (data) =>
-          Object.entries(data).map(([key, value]) => ({ _id: key, count: value }));
-    
+          Object.entries(data).map(([key, value]) => ({
+            _id: key,
+            count: value,
+          }));
+
         res.json({
           personData: formatData(personCount),
           categoryData: formatData(categoryCount),
@@ -1490,7 +1499,19 @@ async function run() {
       }
     });
 
-
+    // last 5 orders
+    app.get("/last-five-orders", async (req, res) => {
+      try {
+        const lastFiveOrders = await ordersCollection
+          .find()
+          .sort({ createdAt: -1 })
+          .limit(5)
+          .toArray();
+        res.status(200).json(lastFiveOrders);
+      } catch (error) {
+        console.error("Error fetching last five orders:", error);
+      }
+    });
   } finally {
   }
 }
