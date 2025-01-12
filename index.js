@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 const app = express();
+const moment = require("moment");
 // const cloudinary = require("cloudinary").v2;
 const port = process.env.PORT || 5000;
 // const fileUpload = require("express-fileupload");
@@ -102,6 +103,7 @@ async function run() {
     app.post("/products", verifyJWT, async (req, res) => {
       const product = req.body;
       product.sales = 0;
+      product.createdAt = new Date();
       try {
         const result = await productCollection.insertOne(product);
         res.status(201).send(result);
@@ -1307,13 +1309,13 @@ async function run() {
     // fetch promoted products by ids
     app.get("/promoted-products", async (req, res) => {
       try {
-        const { ids } = req.query; 
+        const { ids } = req.query;
 
         if (!ids) {
           return res.status(400).json({ error: "No product IDs provided." });
         }
 
-        const productIds = ids.split(",").map((id) => id.trim()); 
+        const productIds = ids.split(",").map((id) => id.trim());
 
         const promotedProducts = await productCollection
           .find({ _id: { $in: productIds.map((id) => new ObjectId(id)) } })
@@ -1325,6 +1327,106 @@ async function run() {
         res.status(500).send("Error fetching promoted products");
       }
     });
+
+    app.get("/chart-data", async (req, res) => {
+      const { timeframe } = req.query;
+
+      let startDate;
+      if (timeframe === "7days") {
+        startDate = moment().subtract(6, "days").startOf("day").toDate();
+      } else if (timeframe === "1month") {
+        startDate = moment().subtract(29, "days").startOf("day").toDate();
+      } else if (timeframe === "6months") {
+        startDate = moment().subtract(5, "months").startOf("month").toDate();
+      } else {
+        return res.status(400).json({ error: "Invalid timeframe" });
+      }
+
+      const currentDate = new Date();
+
+      const productsAdded = await productCollection
+        .aggregate([
+          {
+            $match: {
+              createdAt: { $gte: startDate, $lte: currentDate },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                $dateToString: {
+                  format: timeframe === "6months" ? "%Y-%m" : "%Y-%m-%d",
+                  date: "$createdAt",
+                },
+              },
+              count: { $sum: 1 },
+            },
+          },
+          {
+            $sort: { _id: 1 },
+          },
+        ])
+        .toArray();
+
+      const sales = await ordersCollection
+        .aggregate([
+          {
+            $match: {
+              createdAt: { $gte: startDate, $lte: currentDate },
+              status: "received",
+            },
+          },
+          {
+            $group: {
+              _id: {
+                $dateToString: {
+                  format: timeframe === "6months" ? "%Y-%m" : "%Y-%m-%d",
+                  date: "$createdAt",
+                },
+              },
+              count: { $sum: 1 },
+            },
+          },
+          {
+            $sort: { _id: 1 },
+          },
+        ])
+        .toArray();
+
+      const dates = [];
+      const productsData = [];
+      const salesData = [];
+
+      for (
+        let date = moment(startDate);
+        date <= moment(currentDate);
+        date.add(1, timeframe === "6months" ? "month" : "day")
+      ) {
+        const formattedDate =
+          timeframe === "6months"
+            ? date.format("YYYY-MM")
+            : date.format("YYYY-MM-DD");
+        dates.push(formattedDate);
+
+        const productEntry = productsAdded.find(
+          (item) => item._id === formattedDate
+        );
+        const salesEntry = sales.find((item) => item._id === formattedDate);
+
+        productsData.push(productEntry ? productEntry.count : 0);
+        salesData.push(salesEntry ? salesEntry.count : 0);
+      }
+
+      res.json({
+        categories: dates,
+        series: [
+          { name: "Products Added", data: productsData },
+          { name: "Sales", data: salesData },
+        ],
+      });
+    });
+
+    
   } finally {
   }
 }
