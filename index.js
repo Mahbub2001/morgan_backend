@@ -1248,12 +1248,16 @@ async function run() {
           filter.$or = [{ firstName: regex }, { lastName: regex }];
         }
         if (id) {
-          const regex = { $regex: id, $options: "i" }; 
+          const regex = { $regex: id, $options: "i" };
           filter.$expr = {
-            $regexMatch: { input: { $toString: "$_id" }, regex: id, options: "i" },
+            $regexMatch: {
+              input: { $toString: "$_id" },
+              regex: id,
+              options: "i",
+            },
           };
         }
-        
+
         const customers = await userCollection
           .find(filter)
           .skip((pageNumber - 1) * limitNumber)
@@ -1270,6 +1274,55 @@ async function run() {
       } catch (error) {
         console.error("Error fetching customers:", error);
         res.status(500).send("Error fetching customers");
+      }
+    });
+
+    // top sales 5 products
+    app.get("/top-sales", async (req, res) => {
+      try {
+        const productCollection = client.db("Morgen").collection("products");
+
+        const topProducts = await productCollection
+          .find({})
+          .sort({ sales: -1 })
+          .limit(5)
+          .toArray();
+
+        res.status(200).json(topProducts);
+      } catch (error) {
+        console.error("Error retrieving top products:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+      }
+    });
+
+    app.get("/settings", async (req, res) => {
+      try {
+        const settings = await adminSettingsCollection.findOne({});
+        res.json(settings);
+      } catch (error) {
+        res.status(500).json({ error: "Failed to fetch settings" });
+      }
+    });
+
+    // fetch promoted products by ids
+    app.get("/promoted-products", async (req, res) => {
+      try {
+        const { ids } = req.query; 
+
+        if (!ids) {
+          return res.status(400).json({ error: "No product IDs provided." });
+        }
+
+        const productIds = ids.split(",").map((id) => id.trim()); 
+
+        const promotedProducts = await productCollection
+          .find({ _id: { $in: productIds.map((id) => new ObjectId(id)) } })
+          .toArray();
+
+        res.json(promotedProducts);
+      } catch (error) {
+        console.error("Error fetching promoted products:", error);
+        res.status(500).send("Error fetching promoted products");
       }
     });
   } finally {
