@@ -1457,7 +1457,40 @@ async function run() {
       }
     });
 
+    // pie chart of sales
+    const countOccurrences = (data, field) => {
+      return data.reduce((acc, item) => {
+        const key = item[field];
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+    };
     
+    // API Endpoint
+    app.get("/pie-chart-sales", async (req, res) => {
+      try {
+        const orders = await ordersCollection.find({ status: "received" }).toArray();
+        const productIds = orders.flatMap(order => order.products.map(p => new ObjectId(p.id)));
+        const products = await productCollection.find({ _id: { $in: productIds } }).toArray();
+    
+        const personCount = countOccurrences(products, "person");
+        const categoryCount = countOccurrences(products, "category");
+        const subCategoryCount = countOccurrences(products, "subCategory");
+        const formatData = (data) =>
+          Object.entries(data).map(([key, value]) => ({ _id: key, count: value }));
+    
+        res.json({
+          personData: formatData(personCount),
+          categoryData: formatData(categoryCount),
+          subCategoryData: formatData(subCategoryCount),
+        });
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
+
   } finally {
   }
 }
