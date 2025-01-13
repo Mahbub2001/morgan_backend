@@ -775,6 +775,7 @@ async function run() {
           phone_number: req.body.phone_number,
           totalPrice: req.body.totalPrice,
           postcode: req.body.postcode,
+          totalPriceWithOutDiscount: req.body.totalPriceWithOutDiscount,
           firstName: req.body.firstName,
           lastName: req.body.lastName,
           paymentMethod: req.body.paymentMethod,
@@ -783,6 +784,18 @@ async function run() {
           status: "pending",
           createdAt: new Date(),
         };
+        let totalMainAmount = 0;
+
+        for (const item of req.body.products) {
+          const { id, color, quantity } = item;
+          const product = await productCollection.findOne({
+            _id: new ObjectId(id),
+          });
+          if (product) {
+            totalMainAmount += product.mainPrice * quantity;
+          }
+        }
+        transaction.totalMainAmount = totalMainAmount;
 
         // Verify product stock
         for (const item of req.body.products) {
@@ -835,10 +848,12 @@ async function run() {
           customer_email: req.body.email,
           customer_firstName: req.body.firstName,
           customer_lastName: req.body.lastName,
+          totalPriceWithOutDiscount: req.body.totalPriceWithOutDiscount,
           products: req.body.products,
           createdAt: new Date(),
           totalPrice: req.body.totalPrice,
           coupon: req.body.coupon ? req.body.coupon : null,
+          totalMainAmount: totalMainAmount,
         };
 
         const ordered = await ordersCollection.insertOne(order);
@@ -1514,7 +1529,7 @@ async function run() {
     });
 
     // get number of sales by admin
-    app.get("/total-sales", async (req, res) => {
+    app.get("/total-sales", verifyJWT, verifyAdmin, async (req, res) => {
       try {
         const result = await ordersCollection
           .aggregate([
@@ -1538,6 +1553,46 @@ async function run() {
         res.json({ totalSales: result[0]?.totalSales || 0 });
       } catch (err) {
         console.error(err);
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+
+    app.get("/order-stats", verifyJWT, verifyAdmin, async (req, res) => {
+      try {
+        const result = await ordersCollection
+          .aggregate([
+            {
+              $match: { status: "received" },
+            },
+            {
+              $group: {
+                _id: null,
+                totalMainAmount: { $sum: "$totalMainAmount" },
+                totalPrice: { $sum: "$totalPrice" },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                totalMainAmount: 1,
+                totalPrice: 1,
+                profit: { $subtract: ["$totalPrice", "$totalMainAmount"] },
+              },
+            },
+          ])
+          .toArray();
+
+        if (result.length > 0) {
+          res.json(result[0]);
+        } else {
+          res.json({
+            totalMainAmount: 0,
+            totalPrice: 0,
+            profit: 0,
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching order stats:", error);
         res.status(500).json({ error: "Internal Server Error" });
       }
     });
