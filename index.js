@@ -1512,6 +1512,35 @@ async function run() {
         console.error("Error fetching last five orders:", error);
       }
     });
+
+    // get number of sales by admin
+    app.get("/total-sales", async (req, res) => {
+      try {
+        const result = await ordersCollection
+          .aggregate([
+            { $match: { status: "received" } },
+            { $unwind: "$products" },
+            {
+              $group: {
+                _id: null,
+                totalSales: { $sum: "$products.quantity" },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                totalSales: 1,
+              },
+            },
+          ])
+          .toArray();
+
+        res.json({ totalSales: result[0]?.totalSales || 0 });
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
   } finally {
   }
 }
