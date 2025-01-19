@@ -777,6 +777,9 @@ async function run() {
           postcode: req.body.postcode,
           totalPriceWithOutDiscount: req.body.totalPriceWithOutDiscount,
           firstName: req.body.firstName,
+          currency: req.body.currency,
+          currencyRate: req.body.currencyRate,
+          total_with_payment_method: req.body.total_with_payment_method,
           lastName: req.body.lastName,
           paymentMethod: req.body.paymentMethod,
           coupon: req.body.coupon ? req.body.coupon : null,
@@ -849,6 +852,9 @@ async function run() {
           customer_firstName: req.body.firstName,
           customer_lastName: req.body.lastName,
           totalPriceWithOutDiscount: req.body.totalPriceWithOutDiscount,
+          currency: req.body.currency,
+          currencyRate: req.body.currencyRate,
+          total_with_payment_method: req.body.total_with_payment_method,
           products: req.body.products,
           createdAt: new Date(),
           totalPrice: req.body.totalPrice,
@@ -1596,6 +1602,7 @@ async function run() {
         res.status(500).json({ error: "Internal Server Error" });
       }
     });
+    
   } finally {
   }
 }
