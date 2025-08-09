@@ -19,7 +19,7 @@ app.use(express.urlencoded());
 //     tempFileDir: "/tmp/",
 //   })
 // );
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.nxaiqcz.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.1holp.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 const client = new MongoClient(uri, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -45,15 +45,17 @@ function verifyJWT(req, res, next) {
 
 async function run() {
   try {
-    const userCollection = client.db("Morgen").collection("users");
-    const productCollection = client.db("Morgen").collection("products");
-    const couponCollection = client.db("Morgen").collection("coupons");
+    const userCollection = client.db("nymorgen").collection("users");
+    const productCollection = client.db("nymorgen").collection("products");
+    const couponCollection = client.db("nymorgen").collection("coupons");
     const transactionCollection = client
-      .db("Morgen")
+      .db("nymorgen")
       .collection("transactions");
-    const ordersCollection = client.db("Morgen").collection("orders");
-    const reviewCollection = client.db("Morgen").collection("reviews");
-    const adminSettingsCollection = client.db("Morgen").collection("settings");
+    const ordersCollection = client.db("nymorgen").collection("orders");
+    const reviewCollection = client.db("nymorgen").collection("reviews");
+    const adminSettingsCollection = client
+      .db("nymorgen")
+      .collection("settings");
 
     // verify admin
     const verifyAdmin = async (req, res, next) => {
@@ -80,7 +82,7 @@ async function run() {
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
         expiresIn: "7d",
       });
-      console.log(result);
+      // console.log(result);
       res.send({ result, token });
     });
 
@@ -720,8 +722,8 @@ async function run() {
 
       const updateData = await transactionCollection.updateOne(query, update);
 
-      console.log("successData", successData);
-      console.log("updateDate", updateData);
+      // console.log("successData", successData);
+      // console.log("updateDate", updateData);
 
       res.redirect(`${process.env.CLIENT_URL}/success_payment`);
     });
@@ -896,14 +898,7 @@ async function run() {
           .skip(skip)
           .limit(limit)
           .toArray();
-
-        if (orders.length === 0) {
-          return res.status(404).json({
-            success: false,
-            message: "No orders found for this user.",
-          });
-        }
-
+          
         res.json({
           success: true,
           data: orders,
@@ -1602,7 +1597,6 @@ async function run() {
         res.status(500).json({ error: "Internal Server Error" });
       }
     });
-    
   } finally {
   }
 }
