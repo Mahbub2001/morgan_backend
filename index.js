@@ -898,7 +898,7 @@ async function run() {
           .skip(skip)
           .limit(limit)
           .toArray();
-          
+
         res.json({
           success: true,
           data: orders,
@@ -1069,6 +1069,25 @@ async function run() {
                   },
                   {
                     $inc: { "utilities.$.numberOfProducts": +quantity },
+                  }
+                );
+              }
+            } else if (status === "received") {
+              for (const item of products) {
+                const { id, color, quantity } = item;
+
+                await productCollection.updateOne(
+                  { _id: new ObjectId(id) },
+                  { $inc: { sales: +quantity } }
+                );
+
+                await productCollection.updateOne(
+                  {
+                    _id: new ObjectId(id),
+                    "utilities.color": color,
+                  },
+                  {
+                    $inc: { "utilities.$.numberOfProducts": -quantity },
                   }
                 );
               }
@@ -1298,18 +1317,38 @@ async function run() {
     // top sales 5 products
     app.get("/top-sales", async (req, res) => {
       try {
-        const productCollection = client.db("Morgen").collection("products");
+        const productCollection = client.db("nymorgen").collection("products");
 
+        // Get top 5 products sorted by sales (descending)
         const topProducts = await productCollection
-          .find({})
-          .sort({ sales: -1 })
-          .limit(5)
+          .find({
+            sales: { $exists: true, $gt: 0 }, // Only products with sales data
+          })
+          .sort({ sales: -1 }) // Sort by sales descending
+          .limit(5) // Limit to 5 products
           .toArray();
 
-        res.status(200).json(topProducts);
+        if (topProducts.length === 0) {
+          return res.status(404).json({
+            message: "No products with sales data found",
+            suggestion:
+              "Ensure orders are being completed to update sales counts",
+          });
+        }
+
+        // Return full product details
+        res.status(200).json({
+          success: true,
+          count: topProducts.length,
+          products: topProducts,
+        });
       } catch (error) {
         console.error("Error retrieving top products:", error);
-        res.status(500).json({ message: "Internal Server Error" });
+        res.status(500).json({
+          success: false,
+          message: "Failed to fetch top-selling products",
+          error: error.message,
+        });
       }
     });
 
@@ -1566,10 +1605,17 @@ async function run() {
               $match: { status: "received" },
             },
             {
+              $addFields: {
+                // Convert string prices to numbers because the price is in string 
+                convertedTotalPrice: { $toDouble: "$totalPrice" },
+                convertedTotalMainAmount: { $toDouble: "$totalMainAmount" },
+              },
+            },
+            {
               $group: {
                 _id: null,
-                totalMainAmount: { $sum: "$totalMainAmount" },
-                totalPrice: { $sum: "$totalPrice" },
+                totalMainAmount: { $sum: "$convertedTotalMainAmount" },
+                totalPrice: { $sum: "$convertedTotalPrice" },
               },
             },
             {
@@ -1594,9 +1640,13 @@ async function run() {
         }
       } catch (error) {
         console.error("Error fetching order stats:", error);
-        res.status(500).json({ error: "Internal Server Error" });
+        res.status(500).json({
+          error: "Internal Server Error",
+          details: error.message,
+        });
       }
     });
+
   } finally {
   }
 }
