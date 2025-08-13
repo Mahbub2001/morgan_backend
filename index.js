@@ -4,7 +4,13 @@ const jwt = require("jsonwebtoken");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 const app = express();
+const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const moment = require("moment");
+const {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+} = require("./utilities/emailSender");
 // const cloudinary = require("cloudinary").v2;
 const port = process.env.PORT || 5000;
 // const fileUpload = require("express-fileupload");
@@ -69,6 +75,300 @@ async function run() {
       next();
     };
 
+    app.post("/register", async (req, res) => {
+      try {
+        const { email, password, firstName, lastName } = req.body;
+
+        // Validate input
+        if (!email || !password || !firstName || !lastName) {
+          return res.status(400).json({ message: "All fields are required" });
+        }
+
+        // Check if user exists
+        const existingUser = await userCollection.findOne({ email });
+        if (existingUser) {
+          return res.status(400).json({ message: "User already exists" });
+        }
+
+        // Create user
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const verificationToken = crypto.randomBytes(20).toString("hex");
+
+        const newUser = {
+          email,
+          password: hashedPassword,
+          firstName,
+          lastName,
+          verified: false,
+          verificationToken,
+          verificationTokenExpires: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+          role: "user",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        const result = await userCollection.insertOne(newUser);
+
+        // Send verification email
+        await sendVerificationEmail(email, verificationToken);
+
+        // Create JWT (optional - you might want to wait until email is verified)
+        const token = jwt.sign(
+          { email, id: result.insertedId, role: "user" },
+          process.env.ACCESS_TOKEN_SECRET,
+          { expiresIn: "7d" }
+        );
+
+        res.status(201).json({
+          message:
+            "Registration successful. Please check your email to verify your account.",
+          token,
+          user: {
+            id: result.insertedId,
+            email,
+            firstName,
+            lastName,
+            role: "user",
+            verified: false,
+          },
+        });
+      } catch (error) {
+        console.error("Registration error:", error);
+        res
+          .status(500)
+          .json({ message: "Registration failed", error: error.message });
+      }
+    });
+
+    app.post("/login", async (req, res) => {
+      try {
+        const { email, password } = req.body;
+
+        // Find user
+        const user = await userCollection.findOne({ email });
+        if (!user) {
+          return res.status(401).json({ message: "Invalid credentials" });
+        }
+
+        // Check password
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+          return res.status(401).json({ message: "Invalid credentials" });
+        }
+
+        // Check if email is verified
+        if (!user.verified) {
+          return res
+            .status(403)
+            .json({ message: "Please verify your email first" });
+        }
+
+        // Create JWT
+        const token = jwt.sign(
+          { email: user.email, id: user._id, role: user.role },
+          process.env.ACCESS_TOKEN_SECRET,
+          { expiresIn: "7d" }
+        );
+
+        res.json({
+          token,
+          user: {
+            id: user._id,
+            email: user.email,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            role: user.role,
+            verified: user.verified,
+          },
+        });
+      } catch (error) {
+        console.error("Login error:", error);
+        res.status(500).json({ message: "Login failed", error: error.message });
+      }
+    });
+
+    app.get("/verify-email", async (req, res) => {
+      try {
+        const { token } = req.query;
+
+        const user = await userCollection.findOne({
+          verificationToken: token,
+          verificationTokenExpires: { $gt: Date.now() },
+        });
+
+        // if (!user) {
+        //   return res.status(400).json({
+        //     success: false, // Explicit success flag
+        //     message: "Invalid or expired verification token",
+        //   });
+        // }
+
+        await userCollection.updateOne(
+          { _id: user._id },
+          {
+            $set: { verified: true },
+            $unset: { verificationToken: "", verificationTokenExpires: "" },
+          }
+        );
+
+        // Create JWT after verification
+        // const authToken = jwt.sign(
+        //   { email: user.email, id: user._id, role: user.role },
+        //   process.env.ACCESS_TOKEN_SECRET,
+        //   { expiresIn: "7d" }
+        // );
+
+        res.status(200).json({
+          success: true,
+          message: "Email verified successfully",
+          user: {
+            email: user.email,
+            verified: true,
+          },
+        });
+      } catch (error) {
+        console.error("Email verification error:", error);
+        res.status(500).json({
+          success: false,
+          message: "Email verification failed",
+          error: error.message,
+        });
+      }
+    });
+
+    app.post("/resend-verification", async (req, res) => {
+      try {
+        const { email } = req.body;
+
+        const user = await userCollection.findOne({ email });
+        if (!user) {
+          return res.status(404).json({ message: "User not found" });
+        }
+
+        if (user.verified) {
+          return res.status(400).json({ message: "Email already verified" });
+        }
+
+        // Generate new token
+        const verificationToken = crypto.randomBytes(20).toString("hex");
+        await userCollection.updateOne(
+          { _id: user._id },
+          {
+            $set: {
+              verificationToken,
+              verificationTokenExpires: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+            },
+          }
+        );
+
+        // Send verification email
+        await sendVerificationEmail(email, verificationToken);
+
+        res
+          .status(200)
+          .json({ message: "Verification email resent successfully" });
+      } catch (error) {
+        console.error("Resend verification error:", error);
+        res.status(500).json({
+          message: "Failed to resend verification email",
+          error: error.message,
+        });
+      }
+    });
+
+    app.post("/forgot-password", async (req, res) => {
+      try {
+        const { email } = req.body;
+
+        const user = await userCollection.findOne({ email });
+        if (!user) {
+          // Don't reveal if user doesn't exist for security
+          return res.status(200).json({
+            message:
+              "If an account exists with this email, a reset link has been sent",
+          });
+        }
+
+        // Generate reset token
+        const resetToken = crypto.randomBytes(20).toString("hex");
+        await userCollection.updateOne(
+          { _id: user._id },
+          {
+            $set: {
+              resetPasswordToken: resetToken,
+              resetPasswordExpires: Date.now() + 3600000, // 1 hour
+            },
+          }
+        );
+
+        // Send reset email
+        await sendPasswordResetEmail(email, resetToken);
+
+        res.status(200).json({ message: "Password reset link sent to email" });
+      } catch (error) {
+        console.error("Forgot password error:", error);
+        res.status(500).json({
+          message: "Failed to process password reset",
+          error: error.message,
+        });
+      }
+    });
+
+    app.post("/reset-password", async (req, res) => {
+      try {
+        const { token, newPassword } = req.body;
+
+        const user = await userCollection.findOne({
+          resetPasswordToken: token,
+          resetPasswordExpires: { $gt: Date.now() },
+        });
+
+        if (!user) {
+          return res
+            .status(400)
+            .json({ message: "Invalid or expired password reset token" });
+        }
+
+        // Hash new password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        await userCollection.updateOne(
+          { _id: user._id },
+          {
+            $set: { password: hashedPassword },
+            $unset: { resetPasswordToken: "", resetPasswordExpires: "" },
+          }
+        );
+
+        res.status(200).json({ message: "Password reset successful" });
+      } catch (error) {
+        console.error("Reset password error:", error);
+        res
+          .status(500)
+          .json({ message: "Password reset failed", error: error.message });
+      }
+    });
+
+    // Add this to your authRoutes.js or main server file
+    app.get("/verify", verifyJWT, async (req, res) => {
+      try {
+        const user = await userCollection.findOne(
+          { email: req.decoded.email },
+          { projection: { password: 0 } }
+        );
+        console.log(user);
+        
+        if (!user) {
+          return res.status(404).json({ message: "User not found" });
+        }
+
+        res.json(user);
+      } catch (error) {
+        console.error("Verify endpoint error:", error);
+        res.status(500).json({ message: "Error verifying token" });
+      }
+    });
+
     //user input
     app.put("/user/:email", async (req, res) => {
       const email = req.params.email;
@@ -87,19 +387,31 @@ async function run() {
     });
 
     //get user role
-    app.get("/user/:email", verifyJWT, async (req, res) => {
-      const email = req.params.email;
-      const decodedEmail = req.decoded.email;
-
-      // console.log(email);
-
-      if (email !== decodedEmail) {
-        return res.status(403).send({ message: "forbidden access" });
-      }
-      const query = { email: email };
-      const user = await userCollection.findOne(query);
-      res.send(user);
-    });
+// Add this route to your backend
+app.get("/user/:email", verifyJWT, async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    // Security check: ensure user can only access their own data or admin can access any
+    if (req.decoded.email !== email && req.decoded.role !== 'admin') {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    
+    const user = await userCollection.findOne(
+      { email }, 
+      { projection: { password: 0 } } // Exclude password
+    );
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    res.json(user);
+  } catch (error) {
+    console.error("Get user error:", error);
+    res.status(500).json({ message: "Error fetching user data" });
+  }
+});
 
     //add product
     app.post("/products", verifyJWT, async (req, res) => {
@@ -1606,7 +1918,7 @@ async function run() {
             },
             {
               $addFields: {
-                // Convert string prices to numbers because the price is in string 
+                // Convert string prices to numbers because the price is in string
                 convertedTotalPrice: { $toDouble: "$totalPrice" },
                 convertedTotalMainAmount: { $toDouble: "$totalMainAmount" },
               },
@@ -1646,7 +1958,6 @@ async function run() {
         });
       }
     });
-
   } finally {
   }
 }
