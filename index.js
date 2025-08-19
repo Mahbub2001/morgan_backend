@@ -356,8 +356,8 @@ async function run() {
           { email: req.decoded.email },
           { projection: { password: 0 } }
         );
-        console.log(user);
-        
+        // console.log(user);
+
         if (!user) {
           return res.status(404).json({ message: "User not found" });
         }
@@ -387,31 +387,31 @@ async function run() {
     });
 
     //get user role
-// Add this route to your backend
-app.get("/user/:email", verifyJWT, async (req, res) => {
-  try {
-    const { email } = req.params;
-    
-    // Security check: ensure user can only access their own data or admin can access any
-    if (req.decoded.email !== email && req.decoded.role !== 'admin') {
-      return res.status(403).json({ message: "Access denied" });
-    }
-    
-    const user = await userCollection.findOne(
-      { email }, 
-      { projection: { password: 0 } } // Exclude password
-    );
-    
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    
-    res.json(user);
-  } catch (error) {
-    console.error("Get user error:", error);
-    res.status(500).json({ message: "Error fetching user data" });
-  }
-});
+    // Add this route to your backend
+    app.get("/user/:email", verifyJWT, async (req, res) => {
+      try {
+        const { email } = req.params;
+
+        // Security check: ensure user can only access their own data or admin can access any
+        if (req.decoded.email !== email && req.decoded.role !== "admin") {
+          return res.status(403).json({ message: "Access denied" });
+        }
+
+        const user = await userCollection.findOne(
+          { email },
+          { projection: { password: 0 } } // Exclude password
+        );
+
+        if (!user) {
+          return res.status(404).json({ message: "User not found" });
+        }
+
+        res.json(user);
+      } catch (error) {
+        console.error("Get user error:", error);
+        res.status(500).json({ message: "Error fetching user data" });
+      }
+    });
 
     //add product
     app.post("/products", verifyJWT, async (req, res) => {
@@ -430,18 +430,33 @@ app.get("/user/:email", verifyJWT, async (req, res) => {
     //all product & filtering products
     app.get("/products", async (req, res) => {
       try {
-        const { availability, color, price, size, typeOfProducts, sortPar } =
-          req.query;
+        const {
+          availability,
+          color,
+          price,
+          size,
+          typeOfProducts,
+          sortPar,
+          search,
+        } = req.query;
 
         const query = {};
-        if (availability?.length) {
-          query.availability = {
-            $in: availability
-              .split(",")
-              .map((item) => new RegExp(`^${item}$`, "i")),
-          };
+
+        console.log(search, price);
+
+        // Search functionality
+        if (search?.trim()) {
+          const searchRegex = new RegExp(search, "i");
+          query.$or = [
+            { productName: searchRegex },
+            { description: searchRegex },
+            { "utilities.color": searchRegex },
+            { category: searchRegex },
+            { subCategory: searchRegex },
+          ];
         }
 
+        // Other filters
         if (price) {
           const [min, max] = price.split("-").map(Number);
           query.askingPrice = { $gte: min, $lte: max };
@@ -479,47 +494,77 @@ app.get("/user/:email", verifyJWT, async (req, res) => {
             }
           }
           if (typeFilters.length) {
-            query.$or = typeFilters;
+            if (query.$or) {
+              query.$and = [{ $or: query.$or }, { $or: typeFilters }];
+              delete query.$or;
+            } else {
+              query.$or = typeFilters;
+            }
           }
         }
 
+        // Sorting
         const sortCriteria = {};
         if (sortPar) {
           switch (sortPar) {
             case "featured":
-              sortCriteria.featured = -1; //  "featured" is a ranking field
+              sortCriteria.featured = -1;
               break;
             case "bestSelling":
-              sortCriteria.sales = -1; //  "sales" represents best-selling rank
+              sortCriteria.sales = -1;
               break;
             case "alphabeticallyAZ":
-              sortCriteria.productName = 1; // Sort by name (A-Z)
+              sortCriteria.productName = 1;
               break;
             case "alphabeticallyZA":
-              sortCriteria.productName = -1; // Sort by name (Z-A)
+              sortCriteria.productName = -1;
               break;
             case "priceLowToHigh":
-              sortCriteria.askingPrice = 1; // Sort by price (low to high) //future work discount
+              sortCriteria.askingPrice = 1;
               break;
             case "priceHighToLow":
-              sortCriteria.askingPrice = -1; // Sort by price (high to low)
+              sortCriteria.askingPrice = -1;
               break;
             case "dateOldToNew":
-              sortCriteria.date = 1; // Sort by date (old to new)
+              sortCriteria.date = 1;
               break;
             case "dateNewToOld":
-              sortCriteria.date = -1; // Sort by date (new to old)
+              sortCriteria.date = -1;
               break;
             default:
               break;
           }
         }
 
-        const products = await productCollection
+        // First fetch all products matching other filters
+        let products = await productCollection
           .find(query)
           .sort(sortCriteria)
           .toArray();
 
+        // Apply availability filter if specified
+        if (availability) {
+          const availabilityFilter = availability.split(",");
+          products = products.filter((product) => {
+            return product.utilities.some((utility) => {
+              const isInStock = utility.numberOfProducts > 0;
+
+              if (
+                availabilityFilter.includes("In stock") &&
+                availabilityFilter.includes("Out of stock")
+              ) {
+                return true;
+              } else if (availabilityFilter.includes("In stock")) {
+                return isInStock;
+              } else if (availabilityFilter.includes("Out of stock")) {
+                return !isInStock;
+              }
+              return true;
+            });
+          });
+        }
+
+        // apply color filter
         const filteredProducts = [];
         if (color?.length) {
           const colors = color.split(",").map((item) => item.toLowerCase());
@@ -1631,28 +1676,16 @@ app.get("/user/:email", verifyJWT, async (req, res) => {
       try {
         const productCollection = client.db("nymorgen").collection("products");
 
-        // Get top 5 products sorted by sales (descending)
         const topProducts = await productCollection
-          .find({
-            sales: { $exists: true, $gt: 0 }, // Only products with sales data
-          })
-          .sort({ sales: -1 }) // Sort by sales descending
-          .limit(5) // Limit to 5 products
+          .find({ sales: { $exists: true, $gt: 0 } })
+          .sort({ sales: -1 })
+          .limit(5)
           .toArray();
 
-        if (topProducts.length === 0) {
-          return res.status(404).json({
-            message: "No products with sales data found",
-            suggestion:
-              "Ensure orders are being completed to update sales counts",
-          });
-        }
-
-        // Return full product details
         res.status(200).json({
           success: true,
           count: topProducts.length,
-          products: topProducts,
+          products: topProducts, 
         });
       } catch (error) {
         console.error("Error retrieving top products:", error);
