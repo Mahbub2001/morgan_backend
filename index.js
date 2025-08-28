@@ -600,111 +600,125 @@ async function run() {
 
     //get related products
     app.get("/related-products", async (req, res) => {
-      const {
-        productName,
-        category,
-        subCategory,
-        person,
-        limit = 5,
-      } = req.query;
-
-      if (!productName && !category && !subCategory && !person) {
-        return res.status(400).send({
-          error:
-            "At least one of productName, category, subCategory, or person must be provided to fetch related products.",
-        });
-      }
-
       try {
-        // console.log("Received query parameters:", req.query);
-        const filter = [];
-        if (category) {
-          filter.push({ category: { $regex: category, $options: "i" } });
-        }
+        const {
+          productName,
+          category,
+          subCategory,
+          person,
+          limit = 8,
+          excludeProductId,
+        } = req.query;
+
+        // Convert limit to number
+        const limitNum = parseInt(limit);
+
+        let relatedProducts = [];
+
+        // Stage 1: Search by subCategory (highest priority)
         if (subCategory) {
-          filter.push({ subCategory: { $regex: subCategory, $options: "i" } });
-        }
-        if (productName) {
-          filter.push({ productName: { $ne: productName } });
-        }
-        if (person) {
-          filter.push({ person: { $regex: person, $options: "i" } });
-        }
+          const subCategoryQuery = { subCategory: subCategory };
+          if (excludeProductId) {
+            subCategoryQuery._id = { $ne: excludeProductId };
+          }
 
-        let query = {};
-        if (filter.length > 0) {
-          query = filter.length > 1 ? { $and: filter } : filter[0];
-        }
-
-        // console.log("MongoDB query:", JSON.stringify(query));
-
-        const parseLimit = Math.max(1, parseInt(limit));
-
-        const relatedProducts = await productCollection
-          .find(query)
-          .sort({ category: 1, subCategory: 1 })
-          .limit(parseLimit)
-          .toArray();
-
-        // console.log("Found products:", relatedProducts.length);
-        // console.log(relatedProducts);
-
-        if (relatedProducts.length === 0) {
-          // console.log(
-          //   "No products found with strict filters, trying alternative approach..."
-          // );
-
-          const alternativeFilter = {};
-          if (category)
-            alternativeFilter.category = { $regex: category, $options: "i" };
-          if (subCategory)
-            alternativeFilter.subCategory = {
-              $regex: subCategory,
-              $options: "i",
-            };
-          if (person)
-            alternativeFilter.person = { $regex: person, $options: "i" };
-
-          const alternativeProducts = await productCollection
-            .find(alternativeFilter)
-            .sort({ category: 1, subCategory: 1 })
-            .limit(parseLimit)
+          const subCategoryProducts = await productCollection
+            .find(subCategoryQuery)
+            .limit(limitNum)
             .toArray();
 
-          // console.log(
-          //   "Alternative search found:",
-          //   alternativeProducts.length,
-          //   "products"
-          // );
-
-          const updatedAlternativeProducts = alternativeProducts.map(
-            (product) => {
-              const discountAmount =
-                product.askingPrice * (product.discount / 100);
-              const discountedPrice = product.askingPrice - discountAmount;
-              return {
-                ...product,
-                discountedPrice: discountedPrice.toFixed(2),
-              };
-            }
-          );
-
-          return res.send(updatedAlternativeProducts);
+          relatedProducts = [...subCategoryProducts];
         }
 
-        const updatedProducts = relatedProducts.map((product) => {
-          const discountAmount = product.askingPrice * (product.discount / 100);
-          const discountedPrice = product.askingPrice - discountAmount;
-          return {
-            ...product,
-            discountedPrice: discountedPrice.toFixed(2),
-          };
-        });
+        // If we don't have enough products, search by category
+        if (relatedProducts.length < limitNum && category) {
+          const needed = limitNum - relatedProducts.length;
+          const excludeIds = relatedProducts.map((p) => p._id);
 
-        res.send(updatedProducts);
-      } catch (err) {
-        // console.error("Error fetching related products:", err);
-        res.status(500).send({ error: "Failed to fetch related products" });
+          const categoryQuery = { category: category };
+          if (excludeProductId) {
+            categoryQuery._id = { $ne: excludeProductId };
+          }
+          if (excludeIds.length > 0) {
+            categoryQuery._id = { ...categoryQuery._id, $nin: excludeIds };
+          }
+
+          const categoryProducts = await productCollection
+            .find(categoryQuery)
+            .limit(needed)
+            .toArray();
+
+          relatedProducts = [...relatedProducts, ...categoryProducts];
+        }
+
+        // If we still don't have enough products, search by person
+        if (relatedProducts.length < limitNum && person) {
+          const needed = limitNum - relatedProducts.length;
+          const excludeIds = relatedProducts.map((p) => p._id);
+
+          const personQuery = { person: person };
+          if (excludeProductId) {
+            personQuery._id = { $ne: excludeProductId };
+          }
+          if (excludeIds.length > 0) {
+            personQuery._id = { ...personQuery._id, $nin: excludeIds };
+          }
+
+          const personProducts = await productCollection
+            .find(personQuery)
+            .limit(needed)
+            .toArray();
+
+          relatedProducts = [...relatedProducts, ...personProducts];
+        }
+
+        // If we still don't have enough products, get any related products
+        if (relatedProducts.length < limitNum) {
+          const needed = limitNum - relatedProducts.length;
+          const excludeIds = relatedProducts.map((p) => p._id);
+
+          let fallbackQuery = {};
+          if (excludeProductId) {
+            fallbackQuery._id = { $ne: excludeProductId };
+          }
+          if (excludeIds.length > 0) {
+            fallbackQuery._id = { ...fallbackQuery._id, $nin: excludeIds };
+          }
+          //  by product name similarity or other fields
+          const fallbackProducts = await productCollection
+            .find(fallbackQuery)
+            .limit(needed)
+            .toArray();
+
+          relatedProducts = [...relatedProducts, ...fallbackProducts];
+        }
+
+        // If you want to implement product name similarity as fallback:
+        // This is more complex and might require text indexing
+        /*
+    if (relatedProducts.length < limitNum && productName) {
+      const needed = limitNum - relatedProducts.length;
+      const excludeIds = relatedProducts.map(p => p._id);
+      
+      // Create text index on productName field first:
+      // await productCollection.createIndex({ productName: "text" });
+      
+      const textSearchProducts = await productCollection
+        .find({
+          $text: { $search: productName },
+          _id: { $nin: excludeIds, $ne: excludeProductId }
+        })
+        .limit(needed)
+        .toArray();
+      
+      relatedProducts = [...relatedProducts, ...textSearchProducts];
+    }
+    */
+
+        res.json(relatedProducts.slice(0, limitNum));
+      } catch (error) {
+        console.error("Error fetching related products:", error);
+        res.status(500).json([]);
       }
     });
     // get all products  admin with pagination, search, and filtering
