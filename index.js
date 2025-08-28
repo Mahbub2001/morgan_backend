@@ -616,6 +616,7 @@ async function run() {
       }
 
       try {
+        // console.log("Received query parameters:", req.query);
         const filter = [];
         if (category) {
           filter.push({ category: { $regex: category, $options: "i" } });
@@ -630,7 +631,13 @@ async function run() {
           filter.push({ person: { $regex: person, $options: "i" } });
         }
 
-        const query = filter.length > 1 ? { $and: filter } : filter[0] || {};
+        let query = {};
+        if (filter.length > 0) {
+          query = filter.length > 1 ? { $and: filter } : filter[0];
+        }
+
+        // console.log("MongoDB query:", JSON.stringify(query));
+
         const parseLimit = Math.max(1, parseInt(limit));
 
         const relatedProducts = await productCollection
@@ -638,6 +645,52 @@ async function run() {
           .sort({ category: 1, subCategory: 1 })
           .limit(parseLimit)
           .toArray();
+
+        // console.log("Found products:", relatedProducts.length);
+        // console.log(relatedProducts);
+
+        if (relatedProducts.length === 0) {
+          // console.log(
+          //   "No products found with strict filters, trying alternative approach..."
+          // );
+
+          const alternativeFilter = {};
+          if (category)
+            alternativeFilter.category = { $regex: category, $options: "i" };
+          if (subCategory)
+            alternativeFilter.subCategory = {
+              $regex: subCategory,
+              $options: "i",
+            };
+          if (person)
+            alternativeFilter.person = { $regex: person, $options: "i" };
+
+          const alternativeProducts = await productCollection
+            .find(alternativeFilter)
+            .sort({ category: 1, subCategory: 1 })
+            .limit(parseLimit)
+            .toArray();
+
+          // console.log(
+          //   "Alternative search found:",
+          //   alternativeProducts.length,
+          //   "products"
+          // );
+
+          const updatedAlternativeProducts = alternativeProducts.map(
+            (product) => {
+              const discountAmount =
+                product.askingPrice * (product.discount / 100);
+              const discountedPrice = product.askingPrice - discountAmount;
+              return {
+                ...product,
+                discountedPrice: discountedPrice.toFixed(2),
+              };
+            }
+          );
+
+          return res.send(updatedAlternativeProducts);
+        }
 
         const updatedProducts = relatedProducts.map((product) => {
           const discountAmount = product.askingPrice * (product.discount / 100);
@@ -650,11 +703,10 @@ async function run() {
 
         res.send(updatedProducts);
       } catch (err) {
-        console.error("Error fetching related products:", err);
+        // console.error("Error fetching related products:", err);
         res.status(500).send({ error: "Failed to fetch related products" });
       }
     });
-
     // get all products  admin with pagination, search, and filtering
     app.get("/admin/products", async (req, res) => {
       try {
@@ -1685,7 +1737,7 @@ async function run() {
         res.status(200).json({
           success: true,
           count: topProducts.length,
-          products: topProducts, 
+          products: topProducts,
         });
       } catch (error) {
         console.error("Error retrieving top products:", error);
