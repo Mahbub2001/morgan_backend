@@ -54,6 +54,9 @@ async function run() {
     const userCollection = client.db("nymorgen").collection("users");
     const productCollection = client.db("nymorgen").collection("products");
     const couponCollection = client.db("nymorgen").collection("coupons");
+    const aboutUsCollection = client.db("nymorgen").collection("about-us");
+    const responsibilityCollection = client.db("nymorgen").collection("responsibility");
+    const sustainabilityCollection = client.db("nymorgen").collection("sustainability");
     const transactionCollection = client
       .db("nymorgen")
       .collection("transactions");
@@ -74,6 +77,163 @@ async function run() {
       }
       next();
     };
+
+    // Get About Us content
+    app.get("/about-us", async (req, res) => {
+      try {
+        const aboutUs = await aboutUsCollection.findOne({});
+        res.status(200).json(aboutUs || {});
+      } catch (error) {
+        console.error("Error fetching about us content:", error);
+        res.status(500).json({ message: "Failed to fetch about us content" });
+      }
+    });
+
+    // Update About Us content 
+    app.put("/about-us",verifyJWT, verifyAdmin, async (req, res) => {
+      try {
+        const { title, paragraph1, paragraph2, paragraph3, quote1, quote2 } =
+          req.body;
+
+        // Validate required fields
+        if (
+          !title ||
+          !paragraph1 ||
+          !paragraph2 ||
+          !paragraph3 ||
+          !quote1 ||
+          !quote2
+        ) {
+          return res.status(400).json({ message: "All fields are required" });
+        }
+
+        const aboutUsContent = {
+          title,
+          paragraph1,
+          paragraph2,
+          paragraph3,
+          quote1,
+          quote2,
+          updatedAt: new Date(),
+        };
+
+        // Upsert the about us content (update if exists, insert if not)
+        const result = await aboutUsCollection.updateOne(
+          {},
+          { $set: aboutUsContent },
+          { upsert: true }
+        );
+
+        res.status(200).json({
+          message: "About us content updated successfully",
+          data: aboutUsContent,
+        });
+      } catch (error) {
+        console.error("Error updating about us content:", error);
+        res.status(500).json({ message: "Failed to update about us content" });
+      }
+    });
+    // Get Responsibility content
+    app.get("/responsibility", async (req, res) => {
+      try {
+        const responsibility = await responsibilityCollection.findOne({});
+        res.status(200).json(responsibility || {});
+      } catch (error) {
+        console.error("Error fetching responsibility content:", error);
+        res.status(500).json({ message: "Failed to fetch responsibility content" });
+      }
+    });
+
+    // Update Responsibility content
+    app.put("/responsibility", verifyJWT, verifyAdmin, async (req, res) => {
+      try {
+        const { title, paragraph1, paragraph2, paragraph3, quote1 } =
+          req.body;
+
+        if (
+          !title ||
+          !paragraph1 ||
+          !paragraph2 ||
+          !paragraph3 ||
+          !quote1
+        ) {
+          return res.status(400).json({ message: "All fields are required" });
+        }
+
+        const responsibilityContent = {
+          title,
+          paragraph1,
+          paragraph2,
+          paragraph3,
+          quote1,
+          updatedAt: new Date(),
+        };
+
+        const result = await responsibilityCollection.updateOne(
+          {},
+          { $set: responsibilityContent },
+          { upsert: true }
+        );
+
+        res.status(200).json({
+          message: "Responsibility content updated successfully",
+          data: responsibilityContent,
+        });
+      } catch (error) {
+        console.error("Error updating responsibility content:", error);
+        res.status(500).json({ message: "Failed to update responsibility content" });
+      }
+    });
+    app.get("/sustainability", async (req, res) => {
+      try {
+        const sustainability = await sustainabilityCollection.findOne({});
+        res.status(200).json(sustainability || {});
+      } catch (error) {
+        console.error("Error fetching sustainability content:", error);
+        res.status(500).json({ message: "Failed to fetch sustainability content" });
+      }
+    });
+
+    // Update Sustainability content
+    app.put("/sustainability", verifyJWT, verifyAdmin, async (req, res) => {
+      try {
+        const { title, paragraph1, paragraph2, paragraph3, quote1 } =
+          req.body;
+
+        if (
+          !title ||
+          !paragraph1 ||
+          !paragraph2 ||
+          !paragraph3 ||
+          !quote1
+        ) {
+          return res.status(400).json({ message: "All fields are required" });
+        }
+
+        const sustainabilityContent = {
+          title,
+          paragraph1,
+          paragraph2,
+          paragraph3,
+          quote1,
+          updatedAt: new Date(),
+        };
+
+        const result = await sustainabilityCollection.updateOne(
+          {},
+          { $set: sustainabilityContent },
+          { upsert: true }
+        );
+
+        res.status(200).json({
+          message: "Sustainability content updated successfully",
+          data: sustainabilityContent,
+        });
+      } catch (error) {
+        console.error("Error updating sustainability content:", error);
+        res.status(500).json({ message: "Failed to update sustainability content" });
+      }
+    });
 
     app.post("/register", async (req, res) => {
       try {
